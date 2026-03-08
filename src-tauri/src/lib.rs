@@ -567,11 +567,11 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             padding: 15px 20px;
             border-bottom: 1px solid #f0f0f0;
             transition: background 0.2s;
-            text-decoration: none;
-            color: inherit;
+            cursor: pointer;
         }}
         .video-item:hover {{
             background: #f8f9ff;
+            transform: translateX(4px);
         }}
         .video-item:last-child {{
             border-bottom: none;
@@ -633,6 +633,63 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             font-size: 48px;
             margin-bottom: 15px;
         }}
+        .player-overlay {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }}
+        .player-container {{
+            width: 90%;
+            max-width: 1000px;
+            background: #1a1a1a;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }}
+        .player-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #2d2d2d;
+        }}
+        .player-title {{
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            margin-right: 16px;
+        }}
+        .close-btn {{
+            background: transparent;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 18px;
+            transition: background 0.2s;
+        }}
+        .close-btn:hover {{
+            background: rgba(255, 255, 255, 0.1);
+        }}
+        .video-player {{
+            width: 100%;
+            display: block;
+            max-height: 75vh;
+            background: #000;
+        }}
         @media (max-width: 600px) {{
             .video-item {{
                 grid-template-columns: auto 1fr auto;
@@ -645,6 +702,10 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             }}
             .search-box {{
                 max-width: 100%;
+            }}
+            .player-container {{
+                width: 100%;
+                border-radius: 0;
             }}
         }}
     </style>
@@ -683,6 +744,18 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         </div>
         
         <div class="video-list" id="videoList"></div>
+        
+        <div class="player-overlay" id="playerOverlay" onclick="closePlayer(event)">
+            <div class="player-container" onclick="event.stopPropagation()">
+                <div class="player-header">
+                    <span class="player-title" id="playerTitle"></span>
+                    <button class="close-btn" onclick="closePlayer()">&#10005;</button>
+                </div>
+                <video id="videoPlayer" controls autoplay class="video-player">
+                    您的浏览器不支持视频播放
+                </video>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -705,6 +778,21 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
                 'mpg': '🎬', 'mpeg': '🎬'
             }};
             return icons[ext] || '📹';
+        }}
+        
+        function openPlayer(url, name) {{
+            document.getElementById('playerTitle').textContent = name;
+            document.getElementById('videoPlayer').src = url;
+            document.getElementById('playerOverlay').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }}
+        
+        function closePlayer(event) {{
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('playerOverlay').style.display = 'none';
+            document.getElementById('videoPlayer').pause();
+            document.getElementById('videoPlayer').src = '';
+            document.body.style.overflow = '';
         }}
         
         function renderVideos() {{
@@ -738,7 +826,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             }}
             
             list.innerHTML = filtered.map(v => `
-                <a href="${{v.url}}" target="_blank" class="video-item">
+                <div class="video-item" onclick="openPlayer('${{v.url}}', '${{v.name.replace(/'/g, "\\\\'")}}')">
                     <div class="video-icon">${{getExtIcon(v.extension)}}</div>
                     <div class="video-info">
                         <div class="video-name">${{v.name}}</div>
@@ -748,7 +836,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
                     </div>
                     <div class="video-ext">${{v.extension}}</div>
                     <div class="video-size">${{formatSize(v.size)}}</div>
-                </a>
+                </div>
             `).join('');
             
             document.getElementById('totalCount').textContent = filtered.length;
@@ -767,6 +855,10 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             searchTerm = document.getElementById('searchInput').value;
             renderVideos();
         }}
+        
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Escape') closePlayer();
+        }});
         
         renderVideos();
     </script>
