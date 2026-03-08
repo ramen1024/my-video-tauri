@@ -2,6 +2,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { convertFileSrc } from "@tauri-apps/api/core";
+  // @ts-ignore
+  import qrcode from "qrcode-generator";
 
   let videos = $state([]);
   let currentFolder = $state("");
@@ -10,8 +12,35 @@
   let sortField = $state("name");
   let sortDirection = $state("asc");
   let currentVideo = $state(null);
+  let isSharing = $state(false);
+  let shareInfo = $state(null);
+  let isStartingShare = $state(false);
+  let qrCodeDataUrl = $state("");
+  let selectedIp = $state("");
 
   const supportedExtensions = ["mp4", "webm", "ogg", "mp4", "m4v"];
+  const defaultSharePort = 6008;
+
+  function generateQRCode(ip, port) {
+    try {
+      const url = `http://${ip}:${port}`;
+      console.log("Generating QR code for:", url);
+      const qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+      qrCodeDataUrl = qr.createDataURL(4, 0);
+      console.log("QR code generated:", qrCodeDataUrl ? "success" : "failed");
+    } catch (e) {
+      console.error("QR code generation failed:", e);
+    }
+  }
+
+  function selectIp(ip) {
+    selectedIp = ip;
+    if (shareInfo) {
+      generateQRCode(ip, shareInfo.port);
+    }
+  }
 
   function isSupportedFormat(ext) {
     return supportedExtensions.includes(ext.toLowerCase());
@@ -110,6 +139,43 @@
     const normalizedPath = videoPath.replace(/\\/g, "/");
     return convertFileSrc(normalizedPath);
   }
+
+  async function startShare() {
+    if (!currentFolder) {
+      errorMsg = "请先选择文件夹";
+      return;
+    }
+    
+    isStartingShare = true;
+    errorMsg = "";
+    
+    try {
+      const result = await invoke("start_share_server", { 
+        folderPath: currentFolder,
+        port: defaultSharePort
+      });
+      shareInfo = result;
+      isSharing = true;
+      if (result.ips && result.ips.length > 0) {
+        selectedIp = result.ips[result.ips.length - 1];
+        generateQRCode(selectedIp, result.port);
+      }
+    } catch (e) {
+      errorMsg = "开启共享失败: " + e;
+    } finally {
+      isStartingShare = false;
+    }
+  }
+
+  async function stopShare() {
+    try {
+      await invoke("stop_share_server");
+      isSharing = false;
+      shareInfo = null;
+    } catch (e) {
+      errorMsg = "停止共享失败: " + e;
+    }
+  }
 </script>
 
 <main class="app">
@@ -181,6 +247,45 @@
           >
           刷新
         </button>
+        {#if isSharing}
+          <button class="btn btn-danger" onclick={stopShare}>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg
+            >
+            停止共享
+          </button>
+        {:else}
+          <button class="btn btn-share" onclick={startShare} disabled={isStartingShare}>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              ><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"
+              ></circle><circle cx="18" cy="19" r="3"></circle><line
+                x1="8.59"
+                y1="13.51"
+                x2="15.42"
+                y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"
+              ></line></svg
+            >
+            {isStartingShare ? "开启中..." : "局域网共享"}
+          </button>
+        {/if}
       {/if}
     </div>
   </header>
@@ -189,6 +294,37 @@
     <div class="folder-path">
       <span class="path-label">当前文件夹:</span>
       <span class="path-value">{currentFolder}</span>
+    </div>
+  {/if}
+
+  {#if isSharing && shareInfo}
+    <div class="share-info">
+      <span class="share-label">🎉 局域网共享已开启</span>
+      <div class="share-content">
+        {#if qrCodeDataUrl}
+          <img src={qrCodeDataUrl} alt="二维码" class="qr-code" />
+        {/if}
+        <div class="share-address">
+          <span>手机/平板扫描二维码或选择IP访问:</span>
+          <div class="ip-list">
+            {#each shareInfo.ips as ip}
+              <button 
+                class="ip-btn" 
+                class:selected={ip === selectedIp}
+                onclick={() => selectIp(ip)}
+              >
+                {ip}
+              </button>
+            {/each}
+          </div>
+          <a href="http://{selectedIp}:{shareInfo.port}" target="_blank" class="selected-link">
+            http://{selectedIp}:{shareInfo.port}
+          </a>
+        </div>
+      </div>
+      <div class="firewall-hint">
+        ⚠️ 如果其他设备无法访问，请在 Windows 防火墙中添加入站规则允许端口 {shareInfo.port}
+      </div>
     </div>
   {/if}
 
@@ -473,6 +609,28 @@
     }
   }
 
+  .btn-share {
+    background: #107c10;
+    color: white;
+  }
+
+  .btn-share:hover:not(:disabled) {
+    background: #0e6b0e;
+  }
+
+  .btn-share:disabled {
+    background: #1b1b1b;
+  }
+
+  .btn-danger {
+    background: #c42b1c;
+    color: white;
+  }
+
+  .btn-danger:hover {
+    background: #a12615;
+  }
+
   .folder-path {
     display: flex;
     align-items: center;
@@ -487,6 +645,142 @@
   @media (prefers-color-scheme: dark) {
     .folder-path {
       background: #2d2d2d;
+    }
+  }
+
+  .share-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #e1f5fe;
+    border-radius: 6px;
+    margin-bottom: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .share-info {
+      background: #1a237e;
+    }
+  }
+
+  .share-label {
+    font-weight: 600;
+    color: #107c10;
+    font-size: 14px;
+  }
+
+  .firewall-hint {
+    font-size: 12px;
+    color: #666;
+    padding: 8px 12px;
+    background: rgba(255, 193, 7, 0.15);
+    border-radius: 4px;
+    border-left: 3px solid #ffc107;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .firewall-hint {
+      color: #aaa;
+      background: rgba(255, 193, 7, 0.1);
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .share-label {
+      color: #90caf9;
+    }
+  }
+
+  .share-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-top: 12px;
+  }
+
+  .qr-code {
+    width: 120px;
+    height: 120px;
+    border-radius: 8px;
+    background: white;
+    padding: 8px;
+  }
+
+  .share-address {
+    font-size: 13px;
+    color: #0078d4;
+    word-break: break-all;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .share-address a {
+    color: #0078d4;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .share-address a:hover {
+    text-decoration: underline;
+  }
+
+  .ip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
+  }
+
+  .ip-btn {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    color: #333;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .ip-btn:hover {
+    border-color: #0078d4;
+    color: #0078d4;
+  }
+
+  .ip-btn.selected {
+    background: #0078d4;
+    border-color: #0078d4;
+    color: #fff;
+  }
+
+  .selected-link {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .ip-btn {
+      background: #2d2d2d;
+      border-color: #444;
+      color: #ccc;
+    }
+    .ip-btn:hover {
+      border-color: #60a5fa;
+      color: #60a5fa;
+    }
+    .ip-btn.selected {
+      background: #0078d4;
+      border-color: #0078d4;
+      color: #fff;
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .share-address {
+      color: #60a5fa;
     }
   }
 
