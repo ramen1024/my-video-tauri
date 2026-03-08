@@ -233,6 +233,7 @@
           ></path></svg
         >
         <p>请选择文件夹以扫描视频文件</p>
+        <p class="hint">提示：WallpaperEngine 视频 workshop 路径一般为 E:\Steam\steamapps\workshop\content\431960</p>
       </div>
     {:else}
       <div class="video-count">共找到 {videos.length} 个视频文件</div>
@@ -578,6 +579,19 @@
   .empty-state svg {
     margin-bottom: 16px;
     opacity: 0.5;
+  }
+
+  .empty-state .hint {
+    margin-top: 16px;
+    font-size: 12px;
+    color: #0078d4;
+    opacity: 0.8;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .empty-state .hint {
+      color: #60a5fa;
+    }
   }
 
   .video-count {
