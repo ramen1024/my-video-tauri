@@ -241,19 +241,19 @@
           <thead>
             <tr>
               <th class="col-play"></th>
-              <th class="col-name" onclick={() => toggleSort("name")}>
+              <th class="col-name sortable" onclick={() => toggleSort("name")}>
                 文件名
                 {#if sortField === "name"}
                   <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
                 {/if}
               </th>
-              <th class="col-size" onclick={() => toggleSort("size")}>
+              <th class="col-size sortable" onclick={() => toggleSort("size")}>
                 大小
                 {#if sortField === "size"}
                   <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
                 {/if}
               </th>
-              <th class="col-date" onclick={() => toggleSort("modified")}>
+              <th class="col-date sortable" onclick={() => toggleSort("modified")}>
                 日期
                 {#if sortField === "modified"}
                   <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
@@ -264,7 +264,7 @@
           </thead>
           <tbody>
             {#each sortedVideos as video}
-              <tr onclick={() => playVideo(video)}>
+              <tr>
                 <td class="col-play">
                   <div class="play-icon">
                     <svg
@@ -285,9 +285,9 @@
                 <td class="col-date">{video.modified || "-"}</td>
                 <td class="col-type">
                   {#if isSupportedFormat(video.extension)}
-                    <span class="tag tag-builtin">内置</span>
+                    <button class="play-btn" onclick={() => playVideo(video)}>播放</button>
                   {:else}
-                    <span class="tag tag-system">系统</span>
+                    <button class="system-btn" onclick={() => playVideo(video)}>系统</button>
                   {/if}
                 </td>
               </tr>
@@ -620,6 +620,17 @@
     white-space: nowrap;
   }
 
+  .video-table th.sortable::after {
+    content: "⇅";
+    margin-left: 6px;
+    opacity: 0.3;
+    font-size: 12px;
+  }
+
+  .video-table th.sortable:hover::after {
+    opacity: 0.7;
+  }
+
   .video-table th:hover {
     background: #ebebeb;
   }
@@ -720,35 +731,45 @@
     }
   }
 
-  .tag {
-    display: inline-block;
-    padding: 2px 8px;
+  .play-btn,
+  .system-btn {
+    padding: 4px 12px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
   }
 
-  .tag-builtin {
-    background: #e1f5fe;
-    color: #0277bd;
+  .play-btn {
+    background: #0078d4;
+    color: white;
+  }
+
+  .play-btn:hover {
+    background: #106ebe;
+  }
+
+  .system-btn {
+    background: #e1e1e1;
+    color: #1a1a1a;
   }
 
   @media (prefers-color-scheme: dark) {
-    .tag-builtin {
-      background: #1a237e;
-      color: #90caf9;
+    .system-btn {
+      background: #3d3d3d;
+      color: #ffffff;
     }
   }
 
-  .tag-system {
-    background: #f5f5f5;
-    color: #666;
+  .system-btn:hover {
+    background: #c8c8c8;
   }
 
   @media (prefers-color-scheme: dark) {
-    .tag-system {
-      background: #3d3d3d;
-      color: #999;
+    .system-btn:hover {
+      background: #4d4d4d;
     }
   }
 
