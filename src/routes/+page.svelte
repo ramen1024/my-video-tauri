@@ -6,6 +6,8 @@
   let currentFolder = $state("");
   let isScanning = $state(false);
   let errorMsg = $state("");
+  let sortField = $state("name");
+  let sortDirection = $state("asc");
 
   function formatFileSize(bytes) {
     if (bytes === 0) return "0 B";
@@ -13,6 +15,39 @@
     const sizes = ["B", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  }
+
+  function sortVideos(list, field, direction) {
+    return [...list].sort((a, b) => {
+      let valA = a[field];
+      let valB = b[field];
+
+      if (field === "size") {
+        valA = Number(valA);
+        valB = Number(valB);
+      } else if (field === "created") {
+        valA = valA || "";
+        valB = valB || "";
+      } else {
+        valA = String(valA).toLowerCase();
+        valB = String(valB).toLowerCase();
+      }
+
+      if (valA < valB) return direction === "asc" ? -1 : 1;
+      if (valA > valB) return direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }
+
+  let sortedVideos = $derived(sortVideos(videos, sortField, sortDirection));
+
+  function toggleSort(field) {
+    if (sortField === field) {
+      sortDirection = sortDirection === "asc" ? "desc" : "asc";
+    } else {
+      sortField = field;
+      sortDirection = "asc";
+    }
   }
 
   async function selectFolder() {
@@ -149,33 +184,56 @@
       </div>
     {:else}
       <div class="video-count">共找到 {videos.length} 个视频文件</div>
-      <div class="video-list">
-        {#each videos as video, index}
-          <button class="video-item" onclick={() => playVideo(video.path)}>
-            <div class="video-icon">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><polygon points="5 3 19 12 5 21 5 3"></polygon></svg
-              >
-            </div>
-            <div class="video-info">
-              <div class="video-name">{video.name}</div>
-              <div class="video-meta">
-                <span class="video-size">{formatFileSize(video.size)}</span>
-                <span class="video-ext">.{video.extension}</span>
-              </div>
-              <div class="video-path">{video.path}</div>
-            </div>
-          </button>
-        {/each}
+      <div class="table-container">
+        <table class="video-table">
+          <thead>
+            <tr>
+              <th class="col-play"></th>
+              <th class="col-name" onclick={() => toggleSort("name")}>
+                文件名
+                {#if sortField === "name"}
+                  <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
+                {/if}
+              </th>
+              <th class="col-size" onclick={() => toggleSort("size")}>
+                大小
+                {#if sortField === "size"}
+                  <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
+                {/if}
+              </th>
+              <th class="col-date" onclick={() => toggleSort("created")}>
+                创建日期
+                {#if sortField === "created"}
+                  <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
+                {/if}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each sortedVideos as video}
+              <tr onclick={() => playVideo(video.path)}>
+                <td class="col-play">
+                  <div class="play-icon">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      ><polygon points="5 3 19 12 5 21 5 3"></polygon></svg
+                    >
+                  </div>
+                </td>
+                <td class="col-name">
+                  <span class="video-name">{video.name}</span>
+                  <span class="video-ext">.{video.extension}</span>
+                </td>
+                <td class="col-size">{formatFileSize(video.size)}</td>
+                <td class="col-date">{video.created || "-"}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       </div>
     {/if}
   </div>
@@ -345,6 +403,8 @@
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -398,6 +458,7 @@
     font-size: 13px;
     color: #666;
     border-bottom: 1px solid #e1e1e1;
+    flex-shrink: 0;
   }
 
   @media (prefers-color-scheme: dark) {
@@ -407,112 +468,124 @@
     }
   }
 
-  .video-list {
-    height: calc(100% - 45px);
-    overflow-y: auto;
-    padding: 8px;
+  .table-container {
+    flex: 1;
+    overflow: auto;
   }
 
-  .video-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .video-table {
     width: 100%;
-    padding: 12px;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    text-align: left;
-    transition: background-color 0.15s;
-    margin-bottom: 4px;
+    border-collapse: collapse;
+    font-size: 13px;
   }
 
-  .video-item:hover {
+  .video-table th {
+    position: sticky;
+    top: 0;
+    background: #f5f5f5;
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #666;
+    border-bottom: 1px solid #e1e1e1;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .video-table th:hover {
+    background: #ebebeb;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .video-table th {
+      background: #3d3d3d;
+      color: #999;
+      border-bottom-color: #4d4d4d;
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .video-table th:hover {
+      background: #4d4d4d;
+    }
+  }
+
+  .sort-icon {
+    margin-left: 4px;
+    font-size: 10px;
+    color: #0078d4;
+  }
+
+  .video-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .video-table td {
+      border-bottom-color: #3d3d3d;
+    }
+  }
+
+  .video-table tr {
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  .video-table tbody tr:hover {
     background: #f5f5f5;
   }
 
   @media (prefers-color-scheme: dark) {
-    .video-item:hover {
+    .video-table tbody tr:hover {
       background: #3d3d3d;
     }
   }
 
-  .video-icon {
-    display: flex;
+  .col-play {
+    width: 50px;
+    text-align: center;
+  }
+
+  .col-name {
+    min-width: 200px;
+  }
+
+  .col-size {
+    width: 100px;
+    text-align: right;
+  }
+
+  .col-date {
+    width: 180px;
+  }
+
+  .play-icon {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
-    height: 48px;
-    background: #e1e1e1;
-    border-radius: 8px;
-    flex-shrink: 0;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-icon {
-      background: #3d3d3d;
-    }
-  }
-
-  .video-icon svg {
-    color: #0078d4;
-  }
-
-  .video-info {
-    flex: 1;
-    min-width: 0;
+    width: 28px;
+    height: 28px;
+    background: #0078d4;
+    border-radius: 50%;
+    color: white;
   }
 
   .video-name {
-    font-size: 14px;
     font-weight: 500;
-    color: #1a1a1a;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-name {
-      color: #ffffff;
-    }
-  }
-
-  .video-meta {
-    display: flex;
-    gap: 8px;
-    margin-top: 4px;
-    font-size: 12px;
-    color: #666;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-meta {
-      color: #999;
-    }
   }
 
   .video-ext {
-    background: #e1e1e1;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-weight: 500;
+    margin-left: 6px;
+    color: #666;
+    font-size: 12px;
   }
 
   @media (prefers-color-scheme: dark) {
     .video-ext {
-      background: #3d3d3d;
+      color: #999;
     }
-  }
-
-  .video-path {
-    font-size: 11px;
-    color: #999;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-top: 4px;
   }
 
   .spinning {
