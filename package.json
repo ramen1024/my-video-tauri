@@ -1,6 +1,6 @@
 {
   "name": "my-video-player",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "视频扫描播放工具",
   "type": "module",
   "scripts": {
