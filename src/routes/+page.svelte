@@ -1,6 +1,7 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { convertFileSrc } from "@tauri-apps/api/core";
 
   let videos = $state([]);
   let currentFolder = $state("");
@@ -8,6 +9,13 @@
   let errorMsg = $state("");
   let sortField = $state("name");
   let sortDirection = $state("asc");
+  let currentVideo = $state(null);
+
+  const supportedExtensions = ["mp4", "webm", "ogg", "mp4", "m4v"];
+
+  function isSupportedFormat(ext) {
+    return supportedExtensions.includes(ext.toLowerCase());
+  }
 
   function formatFileSize(bytes) {
     if (bytes === 0) return "0 B";
@@ -60,6 +68,7 @@
 
       if (selected) {
         currentFolder = selected;
+        currentVideo = null;
         await scanVideos();
       }
     } catch (e) {
@@ -83,16 +92,59 @@
     }
   }
 
-  async function playVideo(videoPath) {
-    try {
-      await invoke("play_video", { filePath: videoPath });
-    } catch (e) {
-      errorMsg = "无法播放该视频文件: " + e;
+  function playVideo(video) {
+    if (isSupportedFormat(video.extension)) {
+      currentVideo = video;
+    } else {
+      invoke("play_video", { filePath: video.path }).catch((e) => {
+        errorMsg = "无法播放该视频文件: " + e;
+      });
     }
+  }
+
+  function closePlayer() {
+    currentVideo = null;
+  }
+
+  function getVideoSrc(videoPath) {
+    const normalizedPath = videoPath.replace(/\\/g, "/");
+    return convertFileSrc(normalizedPath);
   }
 </script>
 
 <main class="app">
+  {#if currentVideo}
+    <div class="player-overlay">
+      <div class="player-container">
+        <div class="player-header">
+          <span class="player-title">{currentVideo.name}</span>
+          <button class="close-btn" onclick={closePlayer}>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              ><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6"
+                x2="18"
+                y2="18"></line></svg
+            >
+          </button>
+        </div>
+        <video
+          src={getVideoSrc(currentVideo.path)}
+          controls
+          autoplay
+          class="video-player"
+        >
+          您的浏览器不支持视频播放
+        </video>
+      </div>
+    </div>
+  {/if}
+
   <header class="header">
     <h1 class="title">视频播放器</h1>
     <div class="actions">
@@ -207,11 +259,12 @@
                   <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
                 {/if}
               </th>
+              <th class="col-type">播放</th>
             </tr>
           </thead>
           <tbody>
             {#each sortedVideos as video}
-              <tr onclick={() => playVideo(video.path)}>
+              <tr onclick={() => playVideo(video)}>
                 <td class="col-play">
                   <div class="play-icon">
                     <svg
@@ -230,6 +283,13 @@
                 </td>
                 <td class="col-size">{formatFileSize(video.size)}</td>
                 <td class="col-date">{video.modified || "-"}</td>
+                <td class="col-type">
+                  {#if isSupportedFormat(video.extension)}
+                    <span class="tag tag-builtin">内置</span>
+                  {:else}
+                    <span class="tag tag-system">系统</span>
+                  {/if}
+                </td>
               </tr>
             {/each}
           </tbody>
@@ -265,6 +325,73 @@
     flex-direction: column;
     height: 100vh;
     padding: 16px;
+    position: relative;
+  }
+
+  .player-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .player-container {
+    width: 90%;
+    max-width: 1200px;
+    background: #1a1a1a;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .player-container {
+      background: #1a1a1a;
+    }
+  }
+
+  .player-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #2d2d2d;
+  }
+
+  .player-title {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .video-player {
+    width: 100%;
+    display: block;
+    max-height: 80vh;
   }
 
   .header {
@@ -561,6 +688,11 @@
     width: 180px;
   }
 
+  .col-type {
+    width: 80px;
+    text-align: center;
+  }
+
   .play-icon {
     display: inline-flex;
     align-items: center;
@@ -584,6 +716,38 @@
 
   @media (prefers-color-scheme: dark) {
     .video-ext {
+      color: #999;
+    }
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .tag-builtin {
+    background: #e1f5fe;
+    color: #0277bd;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .tag-builtin {
+      background: #1a237e;
+      color: #90caf9;
+    }
+  }
+
+  .tag-system {
+    background: #f5f5f5;
+    color: #666;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .tag-system {
+      background: #3d3d3d;
       color: #999;
     }
   }
