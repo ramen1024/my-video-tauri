@@ -219,7 +219,7 @@
   {/if}
 
   <header class="header">
-    <h1 class="title">视频播放器</h1>
+    <h1 class="title">视频扫描器</h1>
     <div class="actions">
       <button class="btn btn-primary" onclick={selectFolder}>
         <svg
