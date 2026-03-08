@@ -19,6 +19,26 @@ fn format_system_time(time: SystemTime) -> String {
     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+fn is_root_directory(path: &Path) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let path_str = path.to_string_lossy();
+        if path_str.len() == 3 && path_str.chars().nth(1) == Some(':') {
+            return true;
+        }
+        if path_str == "\\" || path_str == "/" {
+            return true;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if path.to_string_lossy() == "/" {
+            return true;
+        }
+    }
+    false
+}
+
 #[tauri::command]
 fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
     let path = Path::new(&folder_path);
@@ -27,6 +47,10 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
     }
     if !path.is_dir() {
         return Err("路径不是文件夹".to_string());
+    }
+
+    if is_root_directory(path) {
+        return Err("警告：扫描磁盘根目录可能会花费大量时间并导致程序卡住，请选择一个具体的文件夹".to_string());
     }
 
     let video_extensions = [
