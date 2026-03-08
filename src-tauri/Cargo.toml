@@ -1,12 +1,12 @@
 [package]
-name = "my-video-player"
+name = "video-scanner"
 version = "0.1.2"
 description = "视频扫描播放工具"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "my_video_player_lib"
+name = "video_scanner_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

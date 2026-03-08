@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    my_video_player_lib::run()
+    video_scanner_lib::run()
 }

@@ -1,5 +1,5 @@
 {
-  "name": "my-video-player",
+  "name": "video-scanner",
   "version": "0.1.2",
   "description": "视频扫描播放工具",
   "type": "module",
