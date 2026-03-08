@@ -17,6 +17,7 @@
   let isStartingShare = $state(false);
   let qrCodeDataUrl = $state("");
   let selectedIp = $state("");
+  let searchTerm = $state("");
 
   const supportedExtensions = ["mp4", "webm", "ogg", "mp4", "m4v"];
   const defaultSharePort = 6008;
@@ -77,6 +78,12 @@
   }
 
   let sortedVideos = $derived(sortVideos(videos, sortField, sortDirection));
+  
+  let filteredVideos = $derived(
+    searchTerm.trim() 
+      ? sortedVideos.filter(v => v.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      : sortedVideos
+  );
 
   function toggleSort(field) {
     if (sortField === field) {
@@ -372,35 +379,49 @@
         <p class="hint">提示：WallpaperEngine 视频 workshop 路径一般为 E:\Steam\steamapps\workshop\content\431960</p>
       </div>
     {:else}
-      <div class="video-count">共找到 {videos.length} 个视频文件</div>
-      <div class="table-container">
-        <table class="video-table">
-          <thead>
-            <tr>
-              <th class="col-play"></th>
-              <th class="col-name sortable" onclick={() => toggleSort("name")}>
-                文件名
-                {#if sortField === "name"}
-                  <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                {/if}
-              </th>
-              <th class="col-size sortable" onclick={() => toggleSort("size")}>
-                大小
-                {#if sortField === "size"}
-                  <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                {/if}
-              </th>
-              <th class="col-date sortable" onclick={() => toggleSort("modified")}>
-                日期
-                {#if sortField === "modified"}
-                  <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
-                {/if}
-              </th>
-              <th class="col-type">播放</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each sortedVideos as video}
+      <div class="video-toolbar">
+        <div class="video-count">共找到 {videos.length} 个视频文件</div>
+        <div class="search-box">
+          <input 
+            type="text" 
+            placeholder="搜索视频..." 
+            bind:value={searchTerm}
+          />
+        </div>
+      </div>
+      {#if filteredVideos.length === 0 && searchTerm}
+        <div class="no-results">
+          <p>没有找到匹配 "{searchTerm}" 的视频</p>
+        </div>
+      {:else}
+        <div class="table-container">
+          <table class="video-table">
+            <thead>
+              <tr>
+                <th class="col-play"></th>
+                <th class="col-name sortable" onclick={() => toggleSort("name")}>
+                  文件名
+                  {#if sortField === "name"}
+                    <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
+                  {/if}
+                </th>
+                <th class="col-size sortable" onclick={() => toggleSort("size")}>
+                  大小
+                  {#if sortField === "size"}
+                    <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
+                  {/if}
+                </th>
+                <th class="col-date sortable" onclick={() => toggleSort("modified")}>
+                  日期
+                  {#if sortField === "modified"}
+                    <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
+                  {/if}
+                </th>
+                <th class="col-type">播放</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each filteredVideos as video}
               <tr>
                 <td class="col-play">
                   <div class="play-icon">
@@ -432,6 +453,7 @@
           </tbody>
         </table>
       </div>
+      {/if}
     {/if}
   </div>
 </main>
@@ -445,14 +467,15 @@
 
   :global(body) {
     font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
-    background-color: #f3f3f3;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: #1a1a1a;
     overflow: hidden;
+    min-height: 100vh;
   }
 
   @media (prefers-color-scheme: dark) {
     :global(body) {
-      background-color: #202020;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
       color: #ffffff;
     }
   }
@@ -471,7 +494,8 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(10px);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -482,8 +506,9 @@
     width: 90%;
     max-width: 1200px;
     background: #1a1a1a;
-    border-radius: 12px;
+    border-radius: 16px;
     overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -535,24 +560,37 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     margin-bottom: 16px;
   }
 
   @media (prefers-color-scheme: dark) {
     .header {
-      background: #2d2d2d;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      background: rgba(45, 45, 45, 0.95);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
   }
 
   .title {
-    font-size: 20px;
-    font-weight: 600;
-    color: #0078d4;
+    font-size: 22px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .title {
+      background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
   }
 
   .actions {
@@ -564,13 +602,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
+    padding: 10px 18px;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .btn:disabled {
@@ -579,72 +618,72 @@
   }
 
   .btn-primary {
-    background: #0078d4;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #106ebe;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
   }
 
   .btn-secondary {
-    background: #e1e1e1;
-    color: #1a1a1a;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
   }
 
   @media (prefers-color-scheme: dark) {
     .btn-secondary {
-      background: #3d3d3d;
+      background: rgba(60, 60, 60, 0.9);
       color: #ffffff;
     }
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #c8c8c8;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .btn-secondary:hover:not(:disabled) {
-      background: #4d4d4d;
-    }
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
   }
 
   .btn-share {
-    background: #107c10;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
     color: white;
   }
 
   .btn-share:hover:not(:disabled) {
-    background: #0e6b0e;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
   }
 
   .btn-share:disabled {
-    background: #1b1b1b;
+    background: #4b5563;
   }
 
   .btn-danger {
-    background: #c42b1c;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
     color: white;
   }
 
   .btn-danger:hover {
-    background: #a12615;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
   }
 
   .folder-path {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
-    background: #ffffff;
-    border-radius: 6px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 10px;
     margin-bottom: 12px;
     font-size: 13px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   }
 
   @media (prefers-color-scheme: dark) {
     .folder-path {
-      background: #2d2d2d;
+      background: rgba(45, 45, 45, 0.95);
     }
   }
 
@@ -652,15 +691,17 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 12px 16px;
-    background: #e1f5fe;
-    border-radius: 6px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
     margin-bottom: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   }
 
   @media (prefers-color-scheme: dark) {
     .share-info {
-      background: #1a237e;
+      background: rgba(45, 45, 45, 0.95);
     }
   }
 
@@ -821,9 +862,10 @@
 
   .content {
     flex: 1;
-    background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -831,8 +873,8 @@
 
   @media (prefers-color-scheme: dark) {
     .content {
-      background: #2d2d2d;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      background: rgba(45, 45, 45, 0.95);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
   }
 
@@ -888,18 +930,65 @@
     }
   }
 
-  .video-count {
+  .video-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 12px 16px;
-    font-size: 13px;
-    color: #666;
     border-bottom: 1px solid #e1e1e1;
     flex-shrink: 0;
+    gap: 16px;
+  }
+
+  .video-count {
+    font-size: 13px;
+    color: #666;
+  }
+
+  .search-box {
+    flex: 0 0 auto;
+    max-width: 250px;
+  }
+
+  .search-box input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .search-box input:focus {
+    outline: none;
+    border-color: #0078d4;
+    box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+  }
+
+  .no-results {
+    padding: 40px 20px;
+    text-align: center;
+    color: #666;
   }
 
   @media (prefers-color-scheme: dark) {
+    .video-toolbar {
+      border-bottom-color: #3d3d3d;
+    }
     .video-count {
       color: #999;
-      border-bottom-color: #3d3d3d;
+    }
+    .search-box input {
+      background: #2d2d2d;
+      border-color: #444;
+      color: #fff;
+    }
+    .search-box input:focus {
+      border-color: #60a5fa;
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+    }
+    .no-results {
+      color: #888;
     }
   }
 

@@ -411,27 +411,27 @@ fn get_server_status() -> bool {
 }
 
 fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
-    let video_items: String = videos
+    let video_data: String = videos
         .iter()
         .map(|v| {
             let video_url = format!("/video/{}", urlencoding_encode(&v.relative_path));
             format!(
-                r#"<div class="video-item">
-                    <a href="{}" target="_blank">▶ {}</a>
-                    <span class="size">{}</span>
-                </div>"#,
+                r#"{{"name":"{}","url":"{}","size":{},"modified":"{}","extension":"{}"}}"#,
+                v.name.replace("\"", "\\\""),
                 video_url,
-                v.name,
-                format_size(v.size)
+                v.size,
+                v.modified.as_ref().map(|s| s.as_str()).unwrap_or(""),
+                v.extension
             )
         })
-        .collect();
+        .collect::<Vec<_>>()
+        .join(",");
 
     let addresses: String = ips
         .iter()
-        .map(|ip| format!(r#"<div class="address-item">http://{}:{}</div>"#, ip, port))
+        .map(|ip| format!(r#"<span class="address-item">http://{}:{}</span>"#, ip, port))
         .collect::<Vec<_>>()
-        .join("");
+        .join(" | ");
 
     format!(r#"<!DOCTYPE html>
 <html lang="zh-CN">
@@ -443,80 +443,335 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f5f5f5;
-            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
         }}
-        @media (prefers-color-scheme: dark) {{
-            body {{ background: #1a1a1a; color: #fff; }}
-            .video-item {{ background: #2d2d2d; }}
-            .video-item a {{ color: #60a5fa; }}
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
         }}
         .header {{
             text-align: center;
             margin-bottom: 30px;
+            color: #fff;
         }}
         .header h1 {{
-            color: #0078d4;
+            font-size: 2.5em;
             margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }}
+        .header .subtitle {{
+            opacity: 0.9;
+            font-size: 1.1em;
         }}
         .addresses {{
-            background: #e1f5fe;
-            padding: 15px 20px;
-            border-radius: 8px;
+            background: rgba(255,255,255,0.2);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 50px;
             display: inline-block;
-            margin-bottom: 20px;
+            margin-top: 15px;
         }}
         .address-item {{
-            word-break: break-all;
-            padding: 5px 0;
+            color: #fff;
+            font-weight: 500;
         }}
-        @media (prefers-color-scheme: dark) {{
-            .addresses {{ background: #1a237e; }}
-        }}
-        .video-list {{
-            max-width: 800px;
-            margin: 0 auto;
-        }}
-        .video-item {{
+        .toolbar {{
+            background: #fff;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 20px;
-            background: #fff;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            gap: 10px;
         }}
-        .video-item a {{
-            color: #0078d4;
-            text-decoration: none;
-            font-size: 16px;
+        .search-box {{
             flex: 1;
+            min-width: 200px;
+            max-width: 300px;
         }}
-        .video-item a:hover {{
-            text-decoration: underline;
-        }}
-        .size {{
-            color: #666;
+        .search-box input {{
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
             font-size: 14px;
-            margin-left: 20px;
+            transition: border-color 0.3s;
         }}
-        @media (prefers-color-scheme: dark) {{
-            .size {{ color: #999; }}
+        .search-box input:focus {{
+            outline: none;
+            border-color: #667eea;
+        }}
+        .sort-buttons {{
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }}
+        .sort-btn {{
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            background: #fff;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }}
+        .sort-btn:hover {{
+            border-color: #667eea;
+            color: #667eea;
+        }}
+        .sort-btn.active {{
+            background: #667eea;
+            border-color: #667eea;
+            color: #fff;
+        }}
+        .stats {{
+            background: #fff;
+            border-radius: 12px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 15px;
+        }}
+        .stat-item {{
+            text-align: center;
+        }}
+        .stat-value {{
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #667eea;
+        }}
+        .stat-label {{
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 5px;
+        }}
+        .video-list {{
+            background: #fff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }}
+        .video-item {{
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s;
+            text-decoration: none;
+            color: inherit;
+        }}
+        .video-item:hover {{
+            background: #f8f9ff;
+        }}
+        .video-item:last-child {{
+            border-bottom: none;
+        }}
+        .video-icon {{
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-size: 18px;
+        }}
+        .video-info {{
+            flex: 1;
+            min-width: 0;
+        }}
+        .video-name {{
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .video-meta {{
+            font-size: 12px;
+            color: #888;
+        }}
+        .video-meta span {{
+            margin-right: 15px;
+        }}
+        .video-ext {{
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            margin-left: 15px;
+        }}
+        .video-size {{
+            font-weight: 600;
+            color: #667eea;
+            font-size: 14px;
+            margin-left: 15px;
+            text-align: right;
+            min-width: 70px;
+        }}
+        .empty {{
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }}
+        .empty-icon {{
+            font-size: 48px;
+            margin-bottom: 15px;
+        }}
+        @media (max-width: 600px) {{
+            .video-item {{
+                grid-template-columns: auto 1fr auto;
+            }}
+            .video-ext {{
+                display: none;
+            }}
+            .toolbar {{
+                flex-direction: column;
+            }}
+            .search-box {{
+                max-width: 100%;
+            }}
         }}
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>📹 视频扫描器</h1>
-        <div class="addresses">{}</div>
+    <div class="container">
+        <div class="header">
+            <h1>📹 视频扫描器</h1>
+            <div class="subtitle">局域网视频共享服务</div>
+            <div class="addresses">{}</div>
+        </div>
+        
+        <div class="toolbar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="🔍 搜索视频..." oninput="filterVideos()">
+            </div>
+            <div class="sort-buttons">
+                <button class="sort-btn active" onclick="sortVideos('name', 'asc')">名称 ↑</button>
+                <button class="sort-btn" onclick="sortVideos('name', 'desc')">名称 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('size', 'desc')">大小 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('size', 'asc')">大小 ↑</button>
+                <button class="sort-btn" onclick="sortVideos('modified', 'desc')">时间 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('modified', 'asc')">时间 ↑</button>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label">视频数量</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="totalSize">0 B</div>
+                <div class="stat-label">总大小</div>
+            </div>
+        </div>
+        
+        <div class="video-list" id="videoList"></div>
     </div>
-    <div class="video-list">
-        {}
-    </div>
+    
+    <script>
+        const videos = [{}];
+        let currentSort = {{ field: 'name', order: 'asc' }};
+        let searchTerm = '';
+        
+        function formatSize(bytes) {{
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }}
+        
+        function getExtIcon(ext) {{
+            const icons = {{
+                'mp4': '🎬', 'mkv': '🎬', 'avi': '🎬', 'mov': '🎬',
+                'wmv': '🎬', 'flv': '🎬', 'webm': '🎬', 'm4v': '🎬',
+                'mpg': '🎬', 'mpeg': '🎬'
+            }};
+            return icons[ext] || '📹';
+        }}
+        
+        function renderVideos() {{
+            let filtered = videos.filter(v => 
+                v.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+            
+            filtered.sort((a, b) => {{
+                let valA, valB;
+                if (currentSort.field === 'name') {{
+                    valA = a.name.toLowerCase();
+                    valB = b.name.toLowerCase();
+                }} else if (currentSort.field === 'size') {{
+                    valA = a.size;
+                    valB = b.size;
+                }} else {{
+                    valA = a.modified || '';
+                    valB = b.modified || '';
+                }}
+                
+                if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
+                return 0;
+            }});
+            
+            const list = document.getElementById('videoList');
+            
+            if (filtered.length === 0) {{
+                list.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>没有找到视频</div></div>';
+                return;
+            }}
+            
+            list.innerHTML = filtered.map(v => `
+                <a href="${{v.url}}" target="_blank" class="video-item">
+                    <div class="video-icon">${{getExtIcon(v.extension)}}</div>
+                    <div class="video-info">
+                        <div class="video-name">${{v.name}}</div>
+                        <div class="video-meta">
+                            <span>📅 ${{v.modified || '未知'}}</span>
+                        </div>
+                    </div>
+                    <div class="video-ext">${{v.extension}}</div>
+                    <div class="video-size">${{formatSize(v.size)}}</div>
+                </a>
+            `).join('');
+            
+            document.getElementById('totalCount').textContent = filtered.length;
+            const totalBytes = filtered.reduce((sum, v) => sum + v.size, 0);
+            document.getElementById('totalSize').textContent = formatSize(totalBytes);
+        }}
+        
+        function sortVideos(field, order) {{
+            currentSort = {{ field, order }};
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderVideos();
+        }}
+        
+        function filterVideos() {{
+            searchTerm = document.getElementById('searchInput').value;
+            renderVideos();
+        }}
+        
+        renderVideos();
+    </script>
 </body>
-</html>"#, addresses, video_items)
+</html>"#, addresses, video_data)
 }
 
 fn urlencoding_encode(input: &str) -> String {
