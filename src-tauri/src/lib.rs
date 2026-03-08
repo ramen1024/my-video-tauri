@@ -1,51 +1,143 @@
+// ============================================
+// 导入依赖库
+// ============================================
+
+// serde: Rust 的序列化/反序列化框架，用于 JSON 等数据格式转换
+// Serialize: 将结构体转换为 JSON 等格式
+// Deserialize: 将 JSON 等格式转换为结构体
 use serde::{Deserialize, Serialize};
+
+// std::fs: 文件系统操作模块
 use std::fs;
 use std::fs::File;
 use std::fs::Metadata;
+
+// std::io: 输入输出操作
+// Read: 读取数据的 trait
+// Seek: 文件指针定位的 trait
+// SeekFrom: 定位方式的枚举（Start, End, Current）
 use std::io::{Read, Seek, SeekFrom};
+
+// std::path::Path: 路径处理，跨平台兼容
 use std::path::Path;
+
+// std::process::Command: 执行外部命令/程序
 use std::process::Command;
+
+// std::sync::atomic: 原子操作，用于线程安全的共享状态
+// AtomicBool: 原子布尔值，多线程安全
+// Ordering: 内存排序规则，控制原子操作的可见性
 use std::sync::atomic::{AtomicBool, Ordering};
+
+// std::time::SystemTime: 系统时间类型
 use std::time::SystemTime;
+
+// walkdir: 第三方库，递归遍历目录
 use walkdir::WalkDir;
 
+// ============================================
+// 数据结构定义
+// ============================================
+
+/// 视频文件信息结构体
+/// 
+/// # 属性说明
+/// - `#[derive(Debug)]`: 自动实现 Debug trait，支持 {:?} 格式化输出
+/// - `#[derive(Serialize)]`: 自动实现序列化，可转换为 JSON
+/// - `#[derive(Deserialize)]`: 自动实现反序列化，可从 JSON 解析
+/// - `#[derive(Clone)]`: 允许克隆（深拷贝）
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VideoFile {
+    /// 文件名（不含路径）
     pub name: String,
+    /// 完整绝对路径
     pub path: String,
+    /// 相对于扫描目录的相对路径（用于网页端访问）
     pub relative_path: String,
+    /// 文件大小（字节）
     pub size: u64,
+    /// 修改时间（可选，可能获取失败）
     pub modified: Option<String>,
+    /// 文件扩展名（小写）
     pub extension: String,
 }
 
+/// 共享服务器信息结构体
+/// 返回给前端，包含服务器地址和视频列表
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ShareServerInfo {
+    /// 本机所有可用的 IP 地址列表
     pub ips: Vec<String>,
+    /// 服务器监听端口
     pub port: u16,
+    /// 共享的视频列表
     pub videos: Vec<VideoFile>,
 }
 
+// ============================================
+// 全局状态
+// ============================================
+
+/// 服务器运行状态标志
+/// 
+/// static: 静态变量，程序运行期间一直存在
+/// AtomicBool: 原子布尔值，线程安全
+/// 
+/// 为什么用原子类型？
+/// - HTTP 服务器在独立线程中运行
+/// - 主线程需要能够停止服务器
+/// - 原子类型确保多线程访问安全
 static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
+// ============================================
+// 辅助函数
+// ============================================
+
+/// 将系统时间格式化为可读字符串
+/// 
+/// # 参数
+/// - `time`: SystemTime 类型的时间
+/// 
+/// # 返回
+/// 格式化后的字符串，如 "2024-01-15 14:30:00"
 fn format_system_time(time: SystemTime) -> String {
+    // chrono: 第三方日期时间库
+    // DateTime<Local>: 本地时区的日期时间
     let datetime: chrono::DateTime<chrono::Local> = time.into();
+    // format! 宏: 格式化字符串
+    // %Y: 四位年份, %m: 两位月份, %d: 两位日期
+    // %H: 24小时制小时, %M: 分钟, %S: 秒
     datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+/// 检查路径是否为磁盘根目录
+/// 
+/// # 为什么需要这个检查？
+/// 扫描根目录会遍历整个磁盘，非常耗时且可能导致程序卡住
+/// 
+/// # 参数
+/// - `path`: 要检查的路径
+/// 
+/// # 返回
+/// true 表示是根目录
 fn is_root_directory(path: &Path) -> bool {
+    // #[cfg(target_os = "windows")]: 条件编译，仅在 Windows 平台编译此代码块
     #[cfg(target_os = "windows")]
     {
         let path_str = path.to_string_lossy();
+        // Windows 根目录格式: "C:\" (3个字符，第2个是冒号)
         if path_str.len() == 3 && path_str.chars().nth(1) == Some(':') {
             return true;
         }
+        // UNC 路径根目录
         if path_str == "\\" || path_str == "/" {
             return true;
         }
     }
+    // #[cfg(not(target_os = "windows"))]: 非 Windows 平台
     #[cfg(not(target_os = "windows"))]
     {
+        // Unix/Linux 根目录是 "/"
         if path.to_string_lossy() == "/" {
             return true;
         }
@@ -53,21 +145,38 @@ fn is_root_directory(path: &Path) -> bool {
     false
 }
 
+/// 获取本机所有可用的 IP 地址
+/// 
+/// # 实现方式
+/// Windows: 执行 ipconfig 命令并解析输出
+/// 
+/// # 返回
+/// IP 地址列表，过滤掉 127.x.x.x 回环地址
 fn get_local_ips() -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
+        // Command: 执行外部命令
+        // .new("cmd"): 创建命令实例
+        // .args(): 传递参数
+        // .output(): 执行并捕获输出
         let output = Command::new("cmd")
             .args(["/C", "ipconfig"])
             .output();
         
         let mut ips = Vec::new();
+        // Result 处理: Ok 成功, Err 失败
         if let Ok(output) = output {
+            // String::from_utf8_lossy: 将字节转换为字符串，遇到无效 UTF-8 时替换为占位符
             let output_str = String::from_utf8_lossy(&output.stdout);
+            // 逐行解析
             for line in output_str.lines() {
+                // 查找 IPv4 地址行，格式: "   IPv4 地址 . . . : 192.168.1.1"
                 if line.contains("IPv4") && line.contains(":") {
+                    // split(':'): 按冒号分割
+                    // nth(1): 取第二个元素（索引从0开始）
                     if let Some(ip) = line.split(':').nth(1) {
                         let ip = ip.trim();
+                        // 过滤空值和回环地址
                         if !ip.is_empty() && !ip.starts_with("127") {
                             ips.push(ip.to_string());
                         }
@@ -75,6 +184,7 @@ fn get_local_ips() -> Vec<String> {
                 }
             }
         }
+        // 如果没找到任何 IP，返回本地回环地址
         if ips.is_empty() {
             ips.push("127.0.0.1".to_string());
         }
@@ -82,13 +192,35 @@ fn get_local_ips() -> Vec<String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        // 非 Windows 平台暂返回默认值
         vec!["127.0.0.1".to_string()]
     }
 }
 
+// ============================================
+// Tauri 命令函数
+// ============================================
+
+/// 扫描文件夹中的视频文件
+/// 
+/// # Tauri 命令说明
+/// `#[tauri::command]`: 将函数标记为 Tauri 命令
+/// - 可从前端 JavaScript 调用: invoke('scan_videos', { folderPath: '...' })
+/// - 自动处理参数类型转换
+/// - 返回值自动序列化为 JSON
+/// 
+/// # 参数
+/// - `folder_path`: 要扫描的文件夹路径
+/// 
+/// # 返回
+/// - `Ok(Vec<VideoFile>)`: 视频文件列表
+/// - `Err(String)`: 错误信息
 #[tauri::command]
 fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
+    // Path::new(): 从字符串创建路径对象
     let path = Path::new(&folder_path);
+    
+    // 路径验证
     if !path.exists() {
         return Err("文件夹不存在".to_string());
     }
@@ -96,37 +228,61 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
         return Err("路径不是文件夹".to_string());
     }
 
+    // 根目录检查
     if is_root_directory(path) {
         return Err("警告：扫描磁盘根目录可能会花费大量时间并导致程序卡住，请选择一个具体的文件夹".to_string());
     }
 
+    // 支持的视频扩展名数组
     let video_extensions = [
         "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
     ];
 
+    // Vec: 动态数组（可变长度列表）
     let mut videos: Vec<VideoFile> = Vec::new();
     let base_path = Path::new(&folder_path);
 
+    // WalkDir: 递归遍历目录
+    // .follow_links(true): 跟随符号链接
+    // .into_iter(): 转换为迭代器
+    // .filter_map(|e| e.ok()): 过滤掉错误，只保留成功的条目
     for entry in WalkDir::new(&folder_path)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
+        
+        // 只处理文件，跳过目录
         if path.is_file() {
+            // path.extension(): 获取文件扩展名
+            // Option 类型: Some(ext) 或 None
+            // if let Some(ext) = ...: 模式匹配，仅当有值时执行
             if let Some(ext) = path.extension() {
+                // to_string_lossy(): 处理非 UTF-8 路径
                 let ext_lower = ext.to_string_lossy().to_lowercase();
+                
+                // 检查是否为视频文件
                 if video_extensions.contains(&ext_lower.as_str()) {
+                    // 获取文件元数据
+                    // Option<Metadata>: 可能获取失败
                     let metadata: Option<Metadata> = fs::metadata(path).ok();
+                    
+                    // map(): 转换 Option 内部的值
                     let size = metadata.as_ref().map(|m: &Metadata| m.len()).unwrap_or(0);
+                    
+                    // and_then(): 链式 Option 操作
                     let modified = metadata
                         .and_then(|m: Metadata| m.modified().ok())
                         .map(format_system_time);
 
+                    // 计算相对路径
+                    // strip_prefix(): 移除路径前缀
                     let relative_path = path.strip_prefix(base_path)
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
 
+                    // 创建 VideoFile 实例
                     videos.push(VideoFile {
                         name: path
                             .file_name()
@@ -143,15 +299,26 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
         }
     }
 
+    // 按文件名排序（忽略大小写）
+    // sort_by(): 自定义排序
+    // cmp(): 比较两个值
     videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     Ok(videos)
 }
 
+/// 使用系统默认播放器播放视频
+/// 
+/// # 跨平台实现
+/// - Windows: 使用 `cmd /C start` 命令
+/// - macOS: 使用 `open` 命令
+/// - Linux: 使用 `xdg-open` 命令
 #[tauri::command]
 fn play_video(file_path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        // spawn(): 启动子进程，不等待完成
+        // map_err(): 将错误转换为自定义错误信息
         Command::new("cmd")
             .args(["/C", "start", "", &file_path])
             .spawn()
@@ -177,8 +344,22 @@ fn play_video(file_path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 启动局域网共享服务器
+/// 
+/// # 功能
+/// 1. 扫描指定文件夹中的视频
+/// 2. 启动 HTTP 服务器
+/// 3. 支持视频流传输（Range 请求）
+/// 
+/// # HTTP 服务器路由
+/// - `/`: 主页（视频列表）
+/// - `/videos`: 视频列表 JSON API
+/// - `/video/<path>`: 视频文件流
 #[tauri::command]
 fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, String> {
+    // 检查服务器是否已在运行
+    // load(): 读取原子值
+    // Ordering::SeqCst: 顺序一致性内存排序（最严格）
     if SERVER_RUNNING.load(Ordering::SeqCst) {
         return Err("服务器已在运行".to_string());
     }
@@ -188,6 +369,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
         return Err("无效的文件夹路径".to_string());
     }
 
+    // 扫描视频文件（与 scan_videos 类似）
     let video_extensions = [
         "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
     ];
@@ -233,26 +415,44 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
 
     videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
+    // 获取本机 IP 地址
     let ips = get_local_ips();
+    
+    // 克隆数据用于新线程
+    // 为什么需要克隆？
+    // - 新线程需要拥有数据的所有权
+    // - 原数据需要返回给调用者
     let ips_clone = ips.clone();
     let videos_clone = videos.clone();
     let folder_path_clone = folder_path.clone();
 
+    // 设置服务器运行状态
+    // store(): 写入原子值
     SERVER_RUNNING.store(true, Ordering::SeqCst);
 
+    // std::thread::spawn: 创建新线程
+    // move 闭包: 获取捕获变量的所有权
     std::thread::spawn(move || {
+        // 监听地址: 0.0.0.0 表示所有网络接口
         let addr = format!("0.0.0.0:{}", port);
+        
+        // tiny_http: 轻量级 HTTP 服务器库
         match tiny_http::Server::http(&addr) {
             Ok(server) => {
                 println!("Share server started at http://{:?}:{}", ips_clone, port);
                 
+                // incoming_requests(): 迭代接收请求
                 for request in server.incoming_requests() {
+                    // 检查是否应该停止
                     if !SERVER_RUNNING.load(Ordering::SeqCst) {
                         break;
                     }
 
                     let url = request.url();
+                    
+                    // 路由匹配
                     let response = match url {
+                        // 主页
                         "/" | "/index.html" => {
                             let html = generate_html(&videos_clone, &ips_clone, port);
                             tiny_http::Response::from_string(html)
@@ -260,6 +460,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                     tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap()
                                 )
                         }
+                        // 视频 API
                         "/videos" => {
                             let json = serde_json::to_string(&videos_clone).unwrap();
                             tiny_http::Response::from_string(json)
@@ -267,13 +468,16 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                     tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()
                                 )
                                 .with_header(
+                                    // CORS: 允许跨域访问
                                     tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap()
                                 )
                         }
+                        // 视频文件流
                         _ if url.starts_with("/video/") => {
                             let video_name = url.strip_prefix("/video/").unwrap();
                             let video_name_decoded = urlencoding_decode(video_name);
                             
+                            // Windows 路径分隔符转换
                             let video_name_fixed = video_name_decoded.replace("/", "\\");
                             let video_path = Path::new(&folder_path_clone).join(&video_name_fixed);
                             
@@ -284,15 +488,19 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 if let Ok(mut file) = file {
                                     let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
                                     
+                                    // Range 请求处理（支持视频进度条拖动）
                                     let mut range_start = 0u64;
                                     let mut range_end = file_size - 1;
                                     let mut has_range = false;
                                     
+                                    // 检查 Range 请求头
+                                    // Range: bytes=0-1023 表示请求前 1024 字节
                                     if let Some(range_header) = request.headers().iter().find(|h| h.field.as_str() == "Range") {
                                         let range_value = range_header.value.as_str();
                                         println!("Range request: {}", range_value);
                                         has_range = true;
                                         if range_value.starts_with("bytes=") {
+                                            // 解析范围: "bytes=0-1023" -> ["0", "1023"]
                                             let range_parts: Vec<&str> = range_value[6..].split('-').collect();
                                             if let Some(start) = range_parts.first() {
                                                 if !start.is_empty() {
@@ -310,10 +518,13 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                     let content_length = range_end - range_start + 1;
                                     println!("Serving bytes {}-{} / {} (length: {})", range_start, range_end, file_size, content_length);
                                     
+                                    // 定位文件指针
                                     file.seek(SeekFrom::Start(range_start)).ok();
                                     
+                                    // 读取指定范围的数据
                                     let mut buffer = vec![0u8; content_length as usize];
                                     if file.read(&mut buffer).is_ok() {
+                                        // 根据扩展名确定 Content-Type
                                         let content_type = match video_path.extension().and_then(|e| e.to_str()) {
                                             Some("mp4") => "video/mp4",
                                             Some("webm") => "video/webm",
@@ -323,14 +534,17 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                             _ => "application/octet-stream",
                                         };
 
+                                        // 构建响应
                                         tiny_http::Response::from_data(buffer)
                                             .with_header(
                                                 tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap()
                                             )
                                             .with_header(
+                                                // 告诉客户端支持 Range 请求
                                                 tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap()
                                             )
                                             .with_header(
+                                                // 当前返回的范围
                                                 tiny_http::Header::from_bytes(
                                                     &b"Content-Range"[..],
                                                     format!("bytes {}-{}/{}", range_start, range_end, file_size).as_bytes()
@@ -339,6 +553,8 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                             .with_header(
                                                 tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap()
                                             )
+                                            // 206: Partial Content（部分内容）
+                                            // 200: OK（完整内容）
                                             .with_status_code(if has_range {
                                                 206
                                             } else {
@@ -357,12 +573,14 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                     .with_status_code(404)
                             }
                         }
+                        // 404 Not Found
                         _ => {
                             tiny_http::Response::from_string("Not found")
                                 .with_status_code(404)
                         }
                     };
 
+                    // 发送响应
                     request.respond(response).ok();
                 }
             }
@@ -379,38 +597,63 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
     })
 }
 
+/// URL 解码函数
+/// 
+/// # 为什么需要自定义实现？
+/// 标准库的 URL 解码可能不支持多字节 UTF-8 字符（如中文）
+/// 
+/// # 实现原理
+/// 1. 遇到 %XX 时，将 XX 解析为十六进制字节
+/// 2. 收集所有字节后，转换为 UTF-8 字符串
 fn urlencoding_decode(input: &str) -> String {
     let mut bytes = Vec::new();
     let mut chars = input.chars().peekable();
     
     while let Some(c) = chars.next() {
         if c == '%' {
+            // 取接下来的两个字符作为十六进制数
             let hex: String = chars.by_ref().take(2).collect();
+            // from_str_radix: 从字符串解析指定进制的数字
             if let Ok(byte) = u8::from_str_radix(&hex, 16) {
                 bytes.push(byte);
             }
         } else if c == '+' {
+            // URL 编码中 + 表示空格
             bytes.push(b' ');
         } else {
+            // 普通字符直接添加
             bytes.extend(c.to_string().as_bytes());
         }
     }
     
+    // from_utf8_lossy: 将字节转换为字符串，无效 UTF-8 替换为占位符
     String::from_utf8_lossy(&bytes).to_string()
 }
 
+/// 停止共享服务器
 #[tauri::command]
 fn stop_share_server() -> Result<(), String> {
     SERVER_RUNNING.store(false, Ordering::SeqCst);
     Ok(())
 }
 
+/// 获取服务器运行状态
 #[tauri::command]
 fn get_server_status() -> bool {
     SERVER_RUNNING.load(Ordering::SeqCst)
 }
 
+/// 生成网页端 HTML
+/// 
+/// # 参数
+/// - `videos`: 视频列表
+/// - `ips`: IP 地址列表
+/// - `port`: 端口号
+/// 
+/// # 返回
+/// 完整的 HTML 页面字符串
 fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
+    // 构建视频数据 JSON 数组
     let video_data: String = videos
         .iter()
         .map(|v| {
@@ -427,12 +670,16 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .collect::<Vec<_>>()
         .join(",");
 
+    // 构建地址显示
     let addresses: String = ips
         .iter()
         .map(|ip| format!(r#"<span class="address-item">http://{}:{}</span>"#, ip, port))
         .collect::<Vec<_>>()
         .join(" | ");
 
+    // format! 宏: 格式化字符串
+    // {{ 和 }}: 转义大括号，输出字面量 { 和 }
+    // {}: 占位符，按顺序替换
     format!(r#"<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -440,6 +687,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>视频扫描器</title>
     <style>
+        /* CSS 样式省略，见完整代码 */
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -759,10 +1007,12 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
     </div>
     
     <script>
+        // 视频数据数组
         const videos = [{}];
         let currentSort = {{ field: 'name', order: 'asc' }};
         let searchTerm = '';
         
+        // 格式化文件大小
         function formatSize(bytes) {{
             if (bytes === 0) return '0 B';
             const k = 1024;
@@ -771,6 +1021,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }}
         
+        // 获取扩展名图标
         function getExtIcon(ext) {{
             const icons = {{
                 'mp4': '🎬', 'mkv': '🎬', 'avi': '🎬', 'mov': '🎬',
@@ -780,6 +1031,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             return icons[ext] || '📹';
         }}
         
+        // 打开播放器弹窗
         function openPlayer(url, name) {{
             document.getElementById('playerTitle').textContent = name;
             document.getElementById('videoPlayer').src = url;
@@ -787,6 +1039,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             document.body.style.overflow = 'hidden';
         }}
         
+        // 关闭播放器弹窗
         function closePlayer(event) {{
             if (event && event.target !== event.currentTarget) return;
             document.getElementById('playerOverlay').style.display = 'none';
@@ -795,6 +1048,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             document.body.style.overflow = '';
         }}
         
+        // 渲染视频列表
         function renderVideos() {{
             let filtered = videos.filter(v => 
                 v.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -844,6 +1098,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             document.getElementById('totalSize').textContent = formatSize(totalBytes);
         }}
         
+        // 排序视频
         function sortVideos(field, order) {{
             currentSort = {{ field, order }};
             document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
@@ -851,29 +1106,42 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             renderVideos();
         }}
         
+        // 过滤视频
         function filterVideos() {{
             searchTerm = document.getElementById('searchInput').value;
             renderVideos();
         }}
         
+        // ESC 键关闭播放器
         document.addEventListener('keydown', function(e) {{
             if (e.key === 'Escape') closePlayer();
         }});
         
+        // 初始渲染
         renderVideos();
     </script>
 </body>
 </html>"#, addresses, video_data)
 }
 
+/// URL 编码函数
+/// 
+/// # 编码规则
+/// - 字母、数字、- _ . ~ 保持不变
+/// - 空格编码为 %20
+/// - 其他字符编码为 %XX（UTF-8 字节）
 fn urlencoding_encode(input: &str) -> String {
     let mut result = String::new();
     for c in input.chars() {
         match c {
+            // 安全字符：不编码
             'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
+            // 空格：编码为 %20
             ' ' => result.push_str("%20"),
+            // 其他字符：按 UTF-8 字节编码
             _ => {
                 for byte in c.to_string().as_bytes() {
+                    // {:02X}: 两位十六进制，不足补零
                     result.push_str(&format!("%{:02X}", byte));
                 }
             }
@@ -882,23 +1150,44 @@ fn urlencoding_encode(input: &str) -> String {
     result
 }
 
+/// 格式化文件大小（未使用，保留备用）
+#[allow(dead_code)]
 fn format_size(bytes: u64) -> String {
     if bytes == 0 {
         return "0 B".to_string();
     }
     let k = 1024.0;
     let sizes = ["B", "KB", "MB", "GB", "TB"];
+    // log(): 自然对数
+    // powi(): 整数次幂
     let i = (bytes as f64).log(k).floor() as i32;
     format!("{:.2} {}", bytes as f64 / k.powi(i), sizes[i as usize])
 }
 
+// ============================================
+// 应用入口
+// ============================================
+
+/// Tauri 应用入口函数
+/// 
+/// # 属性说明
+/// - `#[cfg_attr(mobile, tauri::mobile_entry_point)]`:
+///   在移动平台时使用 Tauri 的移动端入口点
+/// 
+/// # Tauri Builder
+/// - `.plugin()`: 添加插件
+/// - `.invoke_handler()`: 注册命令处理函数
+/// - `.run()`: 启动应用
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
+        // 初始化插件
+        .plugin(tauri_plugin_opener::init())    // 打开外部链接
+        .plugin(tauri_plugin_dialog::init())    // 文件对话框
+        .plugin(tauri_plugin_fs::init())        // 文件系统
+        .plugin(tauri_plugin_shell::init())     // Shell 命令
+        // 注册 Tauri 命令
+        // generate_handler! 宏: 生成命令处理器
         .invoke_handler(tauri::generate_handler![
             scan_videos, 
             play_video,
@@ -906,6 +1195,8 @@ pub fn run() {
             stop_share_server,
             get_server_status
         ])
+        // 启动应用
+        // generate_context! 宏: 生成应用上下文
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
