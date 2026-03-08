@@ -25,7 +25,7 @@
       if (field === "size") {
         valA = Number(valA);
         valB = Number(valB);
-      } else if (field === "created") {
+      } else if (field === "modified") {
         valA = valA || "";
         valB = valB || "";
       } else {
@@ -201,9 +201,9 @@
                   <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
                 {/if}
               </th>
-              <th class="col-date" onclick={() => toggleSort("created")}>
-                创建日期
-                {#if sortField === "created"}
+              <th class="col-date" onclick={() => toggleSort("modified")}>
+                日期
+                {#if sortField === "modified"}
                   <span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>
                 {/if}
               </th>
@@ -229,7 +229,7 @@
                   <span class="video-ext">.{video.extension}</span>
                 </td>
                 <td class="col-size">{formatFileSize(video.size)}</td>
-                <td class="col-date">{video.created || "-"}</td>
+                <td class="col-date">{video.modified || "-"}</td>
               </tr>
             {/each}
           </tbody>

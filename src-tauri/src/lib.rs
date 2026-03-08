@@ -10,7 +10,7 @@ pub struct VideoFile {
     pub name: String,
     pub path: String,
     pub size: u64,
-    pub created: Option<String>,
+    pub modified: Option<String>,
     pub extension: String,
 }
 
@@ -47,8 +47,8 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
                 if video_extensions.contains(&ext_lower.as_str()) {
                     let metadata = fs::metadata(path).ok();
                     let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-                    let created = metadata
-                        .and_then(|m| m.created().ok())
+                    let modified = metadata
+                        .and_then(|m| m.modified().ok())
                         .map(format_system_time);
 
                     videos.push(VideoFile {
@@ -58,7 +58,7 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
                             .unwrap_or_default(),
                         path: path.to_string_lossy().to_string(),
                         size,
-                        created,
+                        modified,
                         extension: ext_lower,
                     });
                 }
