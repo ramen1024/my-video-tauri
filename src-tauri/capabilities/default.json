@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:default",
+    "fs:default",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        { "name": "open-url", "url": "http://**" },
+        { "name": "open-url", "url": "https://**" },
+        { "name": "open-url", "url": "mailto:**" },
+        { "name": "open-url", "url": "tel:**" }
+      ]
+    },
+    "shell:allow-execute"
+  ]
+}
