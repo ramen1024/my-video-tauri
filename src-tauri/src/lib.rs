@@ -687,13 +687,14 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>视频扫描器</title>
     <style>
-        /* CSS 样式省略，见完整代码 */
+        /* Neumorphism 新拟态风格 */
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #e0e5ec;
             min-height: 100vh;
             padding: 20px;
+            color: #4a5568;
         }}
         .container {{
             max-width: 900px;
@@ -702,40 +703,46 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .header {{
             text-align: center;
             margin-bottom: 30px;
-            color: #fff;
+            color: #4a5568;
+            padding: 30px;
+            background: #e0e5ec;
+            border-radius: 20px;
+            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
         }}
         .header h1 {{
             font-size: 2.5em;
             margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(255,255,255,0.5);
         }}
         .header .subtitle {{
-            opacity: 0.9;
+            opacity: 0.8;
             font-size: 1.1em;
+            color: #718096;
         }}
         .addresses {{
-            background: rgba(255,255,255,0.2);
-            backdrop-filter: blur(10px);
+            background: #e0e5ec;
             padding: 15px 25px;
             border-radius: 50px;
             display: inline-block;
             margin-top: 15px;
+            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
         }}
         .address-item {{
-            color: #fff;
-            font-weight: 500;
+            color: #3182ce;
+            font-weight: 600;
         }}
         .toolbar {{
-            background: #fff;
-            border-radius: 12px;
-            padding: 15px 20px;
+            background: #e0e5ec;
+            border-radius: 16px;
+            padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 15px;
         }}
         .search-box {{
             flex: 1;
@@ -744,46 +751,53 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         }}
         .search-box input {{
             width: 100%;
-            padding: 10px 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 25px;
+            padding: 12px 18px;
+            border: none;
+            border-radius: 12px;
             font-size: 14px;
-            transition: border-color 0.3s;
+            background: #e0e5ec;
+            color: #4a5568;
+            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
+            transition: all 0.2s;
         }}
         .search-box input:focus {{
             outline: none;
-            border-color: #667eea;
+            box-shadow: inset 5px 5px 10px #bec3c9, inset -5px -5px 10px #ffffff;
+        }}
+        .search-box input::placeholder {{
+            color: #a0aec0;
         }}
         .sort-buttons {{
             display: flex;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
         }}
         .sort-btn {{
-            padding: 8px 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 20px;
-            background: #fff;
-            color: #666;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 12px;
+            background: #e0e5ec;
+            color: #718096;
             cursor: pointer;
             font-size: 13px;
-            transition: all 0.3s;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 3px 3px 6px #bec3c9, -3px -3px 6px #ffffff;
         }}
         .sort-btn:hover {{
-            border-color: #667eea;
-            color: #667eea;
+            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
         }}
         .sort-btn.active {{
-            background: #667eea;
-            border-color: #667eea;
-            color: #fff;
+            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
+            color: #3182ce;
+            font-weight: 600;
         }}
         .stats {{
-            background: #fff;
-            border-radius: 12px;
-            padding: 15px 20px;
+            background: #e0e5ec;
+            border-radius: 16px;
+            padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
             display: flex;
             justify-content: space-around;
             flex-wrap: wrap;
@@ -795,45 +809,46 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .stat-value {{
             font-size: 1.8em;
             font-weight: 700;
-            color: #667eea;
+            color: #3182ce;
         }}
         .stat-label {{
             font-size: 0.85em;
-            color: #888;
+            color: #718096;
             margin-top: 5px;
+            font-weight: 500;
         }}
         .video-list {{
-            background: #fff;
-            border-radius: 12px;
+            background: #e0e5ec;
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
         }}
         .video-item {{
             display: grid;
             grid-template-columns: auto 1fr auto auto;
             align-items: center;
-            padding: 15px 20px;
-            border-bottom: 1px solid #f0f0f0;
-            transition: background 0.2s;
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(190,195,201,0.3);
+            transition: all 0.2s;
             cursor: pointer;
         }}
         .video-item:hover {{
-            background: #f8f9ff;
-            transform: translateX(4px);
+            background: rgba(190,195,201,0.2);
         }}
         .video-item:last-child {{
             border-bottom: none;
         }}
         .video-icon {{
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 10px;
+            width: 44px;
+            height: 44px;
+            background: #e0e5ec;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-right: 15px;
             font-size: 18px;
+            box-shadow: 3px 3px 6px #bec3c9, -3px -3px 6px #ffffff;
         }}
         .video-info {{
             flex: 1;
@@ -841,7 +856,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         }}
         .video-name {{
             font-weight: 600;
-            color: #333;
+            color: #4a5568;
             margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
@@ -849,24 +864,25 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         }}
         .video-meta {{
             font-size: 12px;
-            color: #888;
+            color: #718096;
         }}
         .video-meta span {{
             margin-right: 15px;
         }}
         .video-ext {{
-            background: #f0f0f0;
-            padding: 4px 10px;
-            border-radius: 4px;
+            background: #e0e5ec;
+            padding: 5px 12px;
+            border-radius: 8px;
             font-size: 11px;
             font-weight: 600;
-            color: #666;
+            color: #718096;
             text-transform: uppercase;
             margin-left: 15px;
+            box-shadow: inset 2px 2px 4px #bec3c9, inset -2px -2px 4px #ffffff;
         }}
         .video-size {{
-            font-weight: 600;
-            color: #667eea;
+            font-weight: 700;
+            color: #3182ce;
             font-size: 14px;
             margin-left: 15px;
             text-align: right;
@@ -875,11 +891,12 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .empty {{
             text-align: center;
             padding: 60px 20px;
-            color: #888;
+            color: #718096;
         }}
         .empty-icon {{
             font-size: 48px;
             margin-bottom: 15px;
+            opacity: 0.5;
         }}
         .player-overlay {{
             display: none;
@@ -888,7 +905,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(224,229,236,0.95);
             backdrop-filter: blur(10px);
             z-index: 1000;
             justify-content: center;
@@ -897,22 +914,23 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .player-container {{
             width: 90%;
             max-width: 1000px;
-            background: #1a1a1a;
-            border-radius: 16px;
+            background: #e0e5ec;
+            border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            box-shadow: 20px 20px 60px #bec3c9, -20px -20px 60px #ffffff;
         }}
         .player-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 16px;
-            background: #2d2d2d;
+            padding: 16px 20px;
+            background: #e0e5ec;
+            box-shadow: inset 0 2px 4px rgba(255,255,255,0.8), inset 0 -2px 4px rgba(163,177,198,0.6);
         }}
         .player-title {{
-            color: #fff;
+            color: #4a5568;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 600;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -920,17 +938,19 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             margin-right: 16px;
         }}
         .close-btn {{
-            background: transparent;
+            background: #e0e5ec;
             border: none;
-            color: #fff;
+            color: #e53e3e;
             cursor: pointer;
-            padding: 8px 12px;
-            border-radius: 6px;
+            padding: 10px 16px;
+            border-radius: 12px;
             font-size: 18px;
-            transition: background 0.2s;
+            font-weight: 700;
+            transition: all 0.2s;
+            box-shadow: 5px 5px 10px #bec3c9, -5px -5px 10px #ffffff;
         }}
         .close-btn:hover {{
-            background: rgba(255, 255, 255, 0.1);
+            box-shadow: inset 5px 5px 10px #bec3c9, inset -5px -5px 10px #ffffff;
         }}
         .video-player {{
             width: 100%;
