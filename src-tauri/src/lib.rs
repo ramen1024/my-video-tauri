@@ -16,7 +16,9 @@ use std::fs::Metadata;
 // Read: 读取数据的 trait
 // Seek: 文件指针定位的 trait
 // SeekFrom: 定位方式的枚举（Start, End, Current）
-use std::io::{Read, Seek, SeekFrom};
+// Take: 限制读取字节数的包装器
+// Cursor: 内存中的可读写缓冲区
+use std::io::{Cursor, Read, Seek, SeekFrom, Take};
 
 // std::path::Path: 路径处理，跨平台兼容
 use std::path::Path;
@@ -450,27 +452,42 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
 
                     let url = request.url();
                     
-                    // 路由匹配
-                    let response = match url {
+                    // 路由匹配 - 所有响应统一为 Box<dyn Read + Send> 类型
+                    let response: tiny_http::Response<Box<dyn Read + Send>> = match url {
                         // 主页
                         "/" | "/index.html" => {
                             let html = generate_html(&videos_clone, &ips_clone, port);
-                            tiny_http::Response::from_string(html)
-                                .with_header(
-                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap()
-                                )
+                            let html_bytes = html.into_bytes();
+                            let html_len = html_bytes.len();
+                            let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(html_bytes));
+                            tiny_http::Response::new(
+                                200.into(),
+                                vec![
+                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Content-Length"[..], html_len.to_string().as_bytes()).unwrap(),
+                                ],
+                                cursor,
+                                Some(html_len),
+                                None,
+                            )
                         }
                         // 视频 API
                         "/videos" => {
                             let json = serde_json::to_string(&videos_clone).unwrap();
-                            tiny_http::Response::from_string(json)
-                                .with_header(
-                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()
-                                )
-                                .with_header(
-                                    // CORS: 允许跨域访问
-                                    tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap()
-                                )
+                            let json_bytes = json.into_bytes();
+                            let json_len = json_bytes.len();
+                            let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
+                            tiny_http::Response::new(
+                                200.into(),
+                                vec![
+                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
+                                ],
+                                cursor,
+                                Some(json_len),
+                                None,
+                            )
                         }
                         // 视频文件流
                         _ if url.starts_with("/video/") => {
@@ -490,7 +507,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                     
                                     // Range 请求处理（支持视频进度条拖动）
                                     let mut range_start = 0u64;
-                                    let mut range_end = file_size - 1;
+                                    let mut range_end = file_size.saturating_sub(1);
                                     let mut has_range = false;
                                     
                                     // 检查 Range 请求头
@@ -509,21 +526,17 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                             }
                                             if let Some(end) = range_parts.get(1) {
                                                 if !end.is_empty() {
-                                                    range_end = end.parse().unwrap_or(file_size - 1);
+                                                    range_end = end.parse().unwrap_or(file_size.saturating_sub(1));
                                                 }
                                             }
                                         }
                                     }
 
-                                    let content_length = range_end - range_start + 1;
+                                    let content_length = range_end.saturating_sub(range_start) + 1;
                                     println!("Serving bytes {}-{} / {} (length: {})", range_start, range_end, file_size, content_length);
                                     
                                     // 定位文件指针
-                                    file.seek(SeekFrom::Start(range_start)).ok();
-                                    
-                                    // 读取指定范围的数据
-                                    let mut buffer = vec![0u8; content_length as usize];
-                                    if file.read(&mut buffer).is_ok() {
+                                    if file.seek(SeekFrom::Start(range_start)).is_ok() {
                                         // 根据扩展名确定 Content-Type
                                         let content_type = match video_path.extension().and_then(|e| e.to_str()) {
                                             Some("mp4") => "video/mp4",
@@ -534,49 +547,98 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                             _ => "application/octet-stream",
                                         };
 
-                                        // 构建响应
-                                        tiny_http::Response::from_data(buffer)
-                                            .with_header(
-                                                tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap()
-                                            )
-                                            .with_header(
-                                                // 告诉客户端支持 Range 请求
-                                                tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap()
-                                            )
-                                            .with_header(
-                                                // 当前返回的范围
+                                        // 使用 Take 限制读取长度，实现流式传输
+                                        // 避免一次性读取大文件到内存
+                                        let limited_reader: Take<File> = file.take(content_length);
+                                        
+                                        // 构建流式响应
+                                        // Box::new 将具体类型转换为 trait 对象，实现动态分发
+                                        let boxed_reader: Box<dyn Read + Send> = Box::new(limited_reader);
+                                        
+                                        tiny_http::Response::new(
+                                            // 状态码: 206 Partial Content 或 200 OK
+                                            if has_range { 206 } else { 200 }.into(),
+                                            vec![
+                                                tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),
+                                                tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap(),
                                                 tiny_http::Header::from_bytes(
                                                     &b"Content-Range"[..],
                                                     format!("bytes {}-{}/{}", range_start, range_end, file_size).as_bytes()
-                                                ).unwrap()
-                                            )
-                                            .with_header(
-                                                tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap()
-                                            )
-                                            // 206: Partial Content（部分内容）
-                                            // 200: OK（完整内容）
-                                            .with_status_code(if has_range {
-                                                206
-                                            } else {
-                                                200
-                                            })
+                                                ).unwrap(),
+                                                tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap(),
+                                                // 禁用缓存，确保视频播放流畅
+                                                tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap(),
+                                            ],
+                                            boxed_reader,
+                                            Some(content_length as usize),
+                                            None,
+                                        )
                                     } else {
-                                        tiny_http::Response::from_string("Error reading file")
-                                            .with_status_code(500)
+                                        // Seek 失败
+                                        let err_msg = "Seek error".to_string();
+                                        let err_bytes = err_msg.into_bytes();
+                                        let err_len = err_bytes.len();
+                                        let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+                                        tiny_http::Response::new(
+                                            500.into(),
+                                            vec![
+                                                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+                                                tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+                                            ],
+                                            cursor,
+                                            Some(err_len),
+                                            None,
+                                        )
                                     }
                                 } else {
-                                    tiny_http::Response::from_string("File not found")
-                                        .with_status_code(404)
+                                    let err_msg = "File not found".to_string();
+                                    let err_bytes = err_msg.into_bytes();
+                                    let err_len = err_bytes.len();
+                                    let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+                                    tiny_http::Response::new(
+                                        404.into(),
+                                        vec![
+                                            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+                                            tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+                                        ],
+                                        cursor,
+                                        Some(err_len),
+                                        None,
+                                    )
                                 }
                             } else {
-                                tiny_http::Response::from_string("File not found")
-                                    .with_status_code(404)
+                                let err_msg = "File not found".to_string();
+                                let err_bytes = err_msg.into_bytes();
+                                let err_len = err_bytes.len();
+                                let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+                                tiny_http::Response::new(
+                                    404.into(),
+                                    vec![
+                                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+                                    ],
+                                    cursor,
+                                    Some(err_len),
+                                    None,
+                                )
                             }
                         }
                         // 404 Not Found
                         _ => {
-                            tiny_http::Response::from_string("Not found")
-                                .with_status_code(404)
+                            let err_msg = "Not found".to_string();
+                            let err_bytes = err_msg.into_bytes();
+                            let err_len = err_bytes.len();
+                            let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+                            tiny_http::Response::new(
+                                404.into(),
+                                vec![
+                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+                                ],
+                                cursor,
+                                Some(err_len),
+                                None,
+                            )
                         }
                     };
 
