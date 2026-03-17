@@ -469,14 +469,14 @@
 
 <style>
   /* ============================================
-     赛博朋克主题样式
-     配色方案:
-     - 霓虹黄: #F0E100 (主强调色)
-     - 青色: #00F0FF (次强调色)
-     - 洋红: #FF0066 (危险/警告)
-     - 深黑: #0A0A0F (主背景)
-     - 暗灰: #12121A (次背景)
-     - 边框灰: #2A2A3A
+     Glassmorphism (玻璃拟态) 主题样式
+     设计特点:
+     - 柔和渐变网格背景 (深蓝到紫色)
+     - 毛玻璃效果 (backdrop-filter: blur)
+     - 细薄优雅的分隔线
+     - 圆角设计 (12px)
+     - 柔和阴影 (营造悬浮层次感)
+     - 未来感、高级、流畅
      ============================================ */
 
   :global(*) {
@@ -486,43 +486,24 @@
   }
 
   :global(body) {
-    font-family: "Rajdhani", "Segoe UI", "Microsoft YaHei", sans-serif;
-    background: #0A0A0F;
-    color: #E0E0E0;
+    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0f172a;
+    color: #ffffff;
     overflow: hidden;
     min-height: 100vh;
-  }
-
-  /* 扫描线背景效果 */
-  :global(body::before) {
-    content: "";
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0, 240, 255, 0.03) 2px,
-      rgba(0, 240, 255, 0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
   }
 
   .app {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    padding: 20px;
+    padding: 24px;
     position: relative;
-    background: #0A0A0F;
+    background: transparent;
   }
 
   /* ============================================
-     播放器弹窗 - 赛博朋克风格
+     播放器弹窗 - Glassmorphism 风格
      ============================================ */
   .player-overlay {
     position: fixed;
@@ -530,8 +511,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(10, 10, 15, 0.95);
-    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -541,62 +523,50 @@
   .player-container {
     width: 90%;
     max-width: 1200px;
-    background: #12121A;
-    border: 1px solid #F0E100;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
     box-shadow:
-      0 0 20px rgba(240, 225, 0, 0.3),
-      0 0 40px rgba(240, 225, 0, 0.1),
-      inset 0 0 20px rgba(240, 225, 0, 0.05);
-    clip-path: polygon(
-      0 10px,
-      10px 0,
-      calc(100% - 10px) 0,
-      100% 10px,
-      100% calc(100% - 10px),
-      calc(100% - 10px) 100%,
-      10px 100%,
-      0 calc(100% - 10px)
-    );
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    overflow: hidden;
   }
 
   .player-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
-    background: linear-gradient(90deg, #12121A 0%, #1A1A25 50%, #12121A 100%);
-    border-bottom: 1px solid #F0E100;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .player-title {
-    color: #F0E100;
-    font-size: 14px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    text-shadow: 0 0 10px rgba(240, 225, 0, 0.5);
+    font-size: 16px;
+    font-weight: 500;
+    color: #ffffff;
+    letter-spacing: 0.5px;
   }
 
   .close-btn {
-    background: transparent;
-    border: 1px solid #FF0066;
-    color: #FF0066;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
     cursor: pointer;
     padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
-    clip-path: polygon(20% 0%, 100% 0%, 100% 80%, 80% 100%, 0% 100%, 0% 20%);
+    transition: all 0.3s ease;
+    border-radius: 8px;
   }
 
   .close-btn:hover {
-    background: #FF0066;
-    color: #0A0A0F;
-    box-shadow: 0 0 15px rgba(255, 0, 102, 0.6);
+    background: rgba(255, 107, 107, 0.3);
+    border-color: rgba(255, 107, 107, 0.5);
+    transform: scale(1.05);
   }
 
   .video-player {
@@ -607,53 +577,30 @@
   }
 
   /* ============================================
-     头部区域 - 赛博朋克风格
+     头部区域 - Glassmorphism 风格
      ============================================ */
   .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 24px;
-    background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
-    border: 1px solid #F0E100;
+    padding: 20px 28px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
     margin-bottom: 20px;
-    position: relative;
-    clip-path: polygon(
-      0 0,
-      calc(100% - 20px) 0,
-      100% 20px,
-      100% 100%,
-      20px 100%,
-      0 calc(100% - 20px)
-    );
-  }
-
-  .header::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #F0E100, transparent);
-    animation: scanline 3s linear infinite;
-  }
-
-  @keyframes scanline {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.3),
+      0 0 0 1px rgba(255, 255, 255, 0.1) inset;
   }
 
   .title {
-    font-size: 28px;
-    font-weight: 700;
-    color: #F0E100;
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    text-shadow:
-      0 0 10px rgba(240, 225, 0, 0.5),
-      0 0 20px rgba(240, 225, 0, 0.3),
-      0 0 30px rgba(240, 225, 0, 0.1);
+    font-size: 26px;
+    font-weight: 600;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   }
 
   .actions {
@@ -662,43 +609,32 @@
   }
 
   /* ============================================
-     按钮 - 赛博朋克风格（斜切角设计）
+     按钮 - Glassmorphism 风格
      ============================================ */
   .btn {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 12px 24px;
-    border: 1px solid;
-    font-size: 13px;
-    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
-    background: transparent;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border-radius: 12px;
     position: relative;
     overflow: hidden;
-    clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
-  }
-
-  .btn::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    transition: left 0.5s ease;
-  }
-
-  .btn:hover::before {
-    left: 100%;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
   .btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
     transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   }
 
   .btn:active:not(:disabled) {
@@ -708,158 +644,113 @@
   .btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    filter: grayscale(100%);
   }
 
-  /* 主按钮 - 霓虹黄 */
+  /* 主按钮 - 蓝色渐变 */
   .btn-primary {
-    border-color: #F0E100;
-    color: #F0E100;
-    background: rgba(240, 225, 0, 0.1);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.8) 0%, rgba(37, 99, 235, 0.8) 100%);
+    border-color: rgba(59, 130, 246, 0.5);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #F0E100;
-    color: #0A0A0F;
-    box-shadow:
-      0 0 10px rgba(240, 225, 0, 0.5),
-      0 0 20px rgba(240, 225, 0, 0.3),
-      0 0 30px rgba(240, 225, 0, 0.1);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 1) 0%, rgba(37, 99, 235, 1) 100%);
+    box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
   }
 
-  /* 次按钮 - 青色 */
+  /* 次按钮 - 紫色渐变 */
   .btn-secondary {
-    border-color: #00F0FF;
-    color: #00F0FF;
-    background: rgba(0, 240, 255, 0.1);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.8) 0%, rgba(124, 58, 237, 0.8) 100%);
+    border-color: rgba(139, 92, 246, 0.5);
   }
 
   .btn-secondary:hover:not(:disabled) {
-    background: #00F0FF;
-    color: #0A0A0F;
-    box-shadow:
-      0 0 10px rgba(0, 240, 255, 0.5),
-      0 0 20px rgba(0, 240, 255, 0.3);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 1) 0%, rgba(124, 58, 237, 1) 100%);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
   }
 
-  /* 分享按钮 - 橙色 */
+  /* 分享按钮 - 青色渐变 */
   .btn-share {
-    border-color: #FF6600;
-    color: #FF6600;
-    background: rgba(255, 102, 0, 0.1);
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.8) 0%, rgba(8, 145, 178, 0.8) 100%);
+    border-color: rgba(6, 182, 212, 0.5);
   }
 
   .btn-share:hover:not(:disabled) {
-    background: #FF6600;
-    color: #0A0A0F;
-    box-shadow:
-      0 0 10px rgba(255, 102, 0, 0.5),
-      0 0 20px rgba(255, 102, 0, 0.3);
+    background: linear-gradient(135deg, rgba(6, 182, 212, 1) 0%, rgba(8, 145, 178, 1) 100%);
+    box-shadow: 0 8px 24px rgba(6, 182, 212, 0.4);
   }
 
-  /* 危险按钮 - 红色 */
+  /* 危险按钮 - 红色渐变 */
   .btn-danger {
-    border-color: #FF0066;
-    color: #FF0066;
-    background: rgba(255, 0, 102, 0.1);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.8) 0%, rgba(220, 38, 38, 0.8) 100%);
+    border-color: rgba(239, 68, 68, 0.5);
   }
 
   .btn-danger:hover:not(:disabled) {
-    background: #FF0066;
-    color: #0A0A0F;
-    box-shadow:
-      0 0 10px rgba(255, 0, 102, 0.5),
-      0 0 20px rgba(255, 0, 102, 0.3);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 1) 0%, rgba(220, 38, 38, 1) 100%);
+    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
   }
 
   /* ============================================
-     文件夹路径 - 赛博朋克风格
+     文件夹路径 - Glassmorphism 风格
      ============================================ */
   .folder-path {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 16px 20px;
-    background: #12121A;
-    border: 1px solid #2A2A3A;
-    border-left: 3px solid #00F0FF;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
     margin-bottom: 16px;
-    font-size: 13px;
-    position: relative;
-  }
-
-  .folder-path::before {
-    content: ">>>";
-    position: absolute;
-    right: 20px;
-    color: #00F0FF;
-    opacity: 0.5;
-    font-size: 10px;
-    letter-spacing: 2px;
+    font-size: 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
   .path-label {
-    color: #00F0FF;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
+    white-space: nowrap;
   }
 
   .path-value {
-    color: #E0E0E0;
+    color: #ffffff;
     word-break: break-all;
-    font-weight: 500;
-    font-family: "Courier New", monospace;
+    font-weight: 400;
   }
 
   /* ============================================
-     共享信息面板 - 赛博朋克风格
+     共享信息面板 - Glassmorphism 风格
      ============================================ */
   .share-info {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 20px 24px;
-    background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
-    border: 1px solid #FF6600;
+    padding: 24px;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
     margin-bottom: 16px;
-    position: relative;
-    clip-path: polygon(
-      0 0,
-      calc(100% - 15px) 0,
-      100% 15px,
-      100% 100%,
-      15px 100%,
-      0 calc(100% - 15px)
-    );
-  }
-
-  .share-info::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: linear-gradient(90deg, #FF6600, transparent);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 
   .share-label {
-    font-weight: 700;
-    color: #FF6600;
+    font-weight: 600;
+    color: #06b6d4;
     font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    text-shadow: 0 0 10px rgba(255, 102, 0, 0.5);
+    letter-spacing: 0.5px;
   }
 
   .firewall-hint {
-    font-size: 11px;
-    color: #888;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
     padding: 12px 16px;
-    background: rgba(255, 0, 102, 0.1);
-    border-left: 2px solid #FF0066;
-    font-family: "Courier New", monospace;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
   }
 
   .share-content {
@@ -872,15 +763,15 @@
   .qr-code {
     width: 120px;
     height: 120px;
-    background: #0A0A0F;
-    padding: 8px;
-    border: 1px solid #00F0FF;
-    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.3));
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
   .share-address {
-    font-size: 13px;
-    color: #00F0FF;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
     word-break: break-all;
     display: flex;
     flex-direction: column;
@@ -888,16 +779,15 @@
   }
 
   .share-address a {
-    color: #F0E100;
+    color: #60a5fa;
     text-decoration: none;
     font-size: 15px;
     font-weight: 600;
-    font-family: "Courier New", monospace;
-    text-shadow: 0 0 10px rgba(240, 225, 0, 0.3);
+    transition: all 0.3s ease;
   }
 
   .share-address a:hover {
-    text-shadow: 0 0 20px rgba(240, 225, 0, 0.6);
+    color: #93c5fd;
   }
 
   .ip-list {
@@ -909,21 +799,20 @@
 
   .ip-btn {
     padding: 8px 16px;
-    border: 1px solid #2A2A3A;
-    background: transparent;
-    color: #888;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.7);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-family: "Courier New", monospace;
-    clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
+    transition: all 0.3s ease;
+    border-radius: 8px;
   }
 
   .ip-btn:hover {
-    border-color: #00F0FF;
-    color: #00F0FF;
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+    border-color: rgba(96, 165, 250, 0.4);
+    color: #60a5fa;
+    background: rgba(255, 255, 255, 0.12);
   }
 
   .ip-btn.selected {
@@ -939,53 +828,42 @@
   }
 
   /* ============================================
-     错误消息 - 赛博朋克风格
+     错误消息 - Glassmorphism 风格
      ============================================ */
   .error-message {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 16px 20px;
-    background: rgba(255, 0, 102, 0.1);
-    color: #FF0066;
-    border: 1px solid #FF0066;
-    border-left: 4px solid #FF0066;
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 12px;
     margin-bottom: 16px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
-    animation: errorPulse 2s ease-in-out infinite;
-  }
-
-  @keyframes errorPulse {
-    0%, 100% { box-shadow: 0 0 5px rgba(255, 0, 102, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(255, 0, 102, 0.6); }
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
 
   /* ============================================
-     内容区域 - 赛博朋克风格
+     内容区域 - Glassmorphism 风格
      ============================================ */
   .content {
     flex: 1;
-    background: #12121A;
-    border: 1px solid #2A2A3A;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    position: relative;
-  }
-
-  .content::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, #00F0FF, transparent);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 
   /* ============================================
-     加载状态 - 赛博朋克风格
+     加载状态 - Glassmorphism 风格
      ============================================ */
   .loading {
     display: flex;
@@ -993,29 +871,22 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #00F0FF;
-    gap: 16px;
+    color: rgba(255, 255, 255, 0.8);
+    gap: 20px;
   }
 
   .loading p {
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    animation: textFlicker 2s infinite;
-  }
-
-  @keyframes textFlicker {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    font-size: 14px;
+    letter-spacing: 0.5px;
   }
 
   .spinner {
-    width: 50px;
-    height: 50px;
-    border: 2px solid #2A2A3A;
-    border-top-color: #F0E100;
-    border-right-color: #00F0FF;
+    width: 48px;
+    height: 48px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #60a5fa;
+    border-radius: 50%;
     animation: spin 1s linear infinite;
-    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   }
 
   @keyframes spin {
@@ -1025,7 +896,7 @@
   }
 
   /* ============================================
-     空状态 - 赛博朋克风格
+     空状态 - Glassmorphism 风格
      ============================================ */
   .empty-state {
     display: flex;
@@ -1033,99 +904,83 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #888;
+    color: rgba(255, 255, 255, 0.5);
     padding: 40px;
   }
 
   .empty-state svg {
     margin-bottom: 16px;
-    opacity: 0.3;
-    color: #00F0FF;
+    opacity: 0.5;
+    color: rgba(255, 255, 255, 0.6);
   }
 
   .empty-state p {
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 14px;
   }
 
   .empty-state .hint {
     margin-top: 16px;
-    font-size: 11px;
-    color: #F0E100;
-    opacity: 0.6;
-    font-family: "Courier New", monospace;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
   }
 
   /* ============================================
-     工具栏 - 赛博朋克风格
+     工具栏 - Glassmorphism 风格
      ============================================ */
   .video-toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
-    border-bottom: 1px solid #2A2A3A;
+    padding: 16px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
     gap: 16px;
-    background: linear-gradient(90deg, #12121A 0%, #1A1A25 100%);
+    background: rgba(255, 255, 255, 0.03);
   }
 
   .video-count {
-    font-size: 13px;
-    color: #00F0FF;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 500;
   }
 
   .search-box {
     flex: 0 0 auto;
-    max-width: 250px;
+    max-width: 280px;
     position: relative;
-  }
-
-  .search-box::before {
-    content: ">>>";
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #F0E100;
-    font-size: 10px;
-    letter-spacing: 2px;
   }
 
   .search-box input {
     width: 100%;
-    padding: 10px 14px 10px 40px;
-    border: 1px solid #2A2A3A;
-    font-size: 13px;
-    background: #0A0A0F;
-    color: #E0E0E0;
-    transition: all 0.2s ease;
-    font-family: "Courier New", monospace;
+    padding: 10px 16px 10px 40px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    font-size: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    transition: all 0.3s ease;
   }
 
   .search-box input:focus {
     outline: none;
-    border-color: #00F0FF;
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+    border-color: rgba(96, 165, 250, 0.5);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
   }
 
   .search-box input::placeholder {
-    color: #555;
+    color: rgba(255, 255, 255, 0.4);
   }
 
   .no-results {
     padding: 40px 20px;
     text-align: center;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 14px;
   }
 
   /* ============================================
-     视频表格 - 赛博朋克风格
+     视频表格 - Glassmorphism 风格
      ============================================ */
   .table-container {
     flex: 1;
@@ -1136,24 +991,25 @@
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .video-table th {
     position: sticky;
     top: 0;
-    background: #0A0A0F;
-    padding: 14px 20px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 16px 20px;
     text-align: left;
-    font-weight: 700;
-    color: #F0E100;
-    border-bottom: 2px solid #F0E100;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 11px;
+    font-size: 12px;
+    letter-spacing: 0.5px;
   }
 
   .video-table th.sortable::after {
@@ -1161,7 +1017,7 @@
     margin-left: 6px;
     opacity: 0.4;
     font-size: 12px;
-    color: #00F0FF;
+    color: rgba(255, 255, 255, 0.6);
   }
 
   .video-table th.sortable:hover::after {
@@ -1169,34 +1025,28 @@
   }
 
   .video-table th:hover {
-    color: #00F0FF;
-    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    color: #60a5fa;
+    background: rgba(255, 255, 255, 0.12);
   }
 
   .sort-icon {
     margin-left: 4px;
     font-size: 10px;
-    color: #F0E100;
-    text-shadow: 0 0 5px rgba(240, 225, 0, 0.5);
+    color: #60a5fa;
   }
 
   .video-table td {
-    padding: 12px 20px;
-    border-bottom: 1px solid #2A2A3A;
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   }
 
   .video-table tr {
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: all 0.2s ease;
   }
 
   .video-table tbody tr:hover {
-    background: rgba(0, 240, 255, 0.05);
-    border-left: 2px solid #00F0FF;
-  }
-
-  .video-table tbody tr:hover td:first-child {
-    padding-left: 18px;
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .col-play {
@@ -1211,14 +1061,12 @@
   .col-size {
     width: 100px;
     text-align: right;
-    font-family: "Courier New", monospace;
-    color: #00F0FF;
+    color: rgba(255, 255, 255, 0.7);
   }
 
   .col-date {
     width: 180px;
-    font-family: "Courier New", monospace;
-    color: #888;
+    color: rgba(255, 255, 255, 0.5);
   }
 
   .col-type {
@@ -1230,29 +1078,28 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    background: transparent;
-    border: 1px solid #F0E100;
-    color: #F0E100;
-    transition: all 0.2s ease;
-    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    width: 36px;
+    height: 36px;
+    background: rgba(96, 165, 250, 0.2);
+    border: 1px solid rgba(96, 165, 250, 0.4);
+    color: #60a5fa;
+    border-radius: 50%;
+    transition: all 0.3s ease;
   }
 
   .play-icon:hover {
-    background: #F0E100;
-    color: #0A0A0F;
-    box-shadow: 0 0 15px rgba(240, 225, 0, 0.5);
+    background: rgba(96, 165, 250, 0.4);
+    transform: scale(1.1);
   }
 
   .video-name {
-    font-weight: 600;
-    color: #E0E0E0;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.95);
   }
 
   .video-ext {
     margin-left: 6px;
-    color: #F0E100;
+    color: #60a5fa;
     font-size: 11px;
     font-weight: 500;
     text-transform: uppercase;
@@ -1260,38 +1107,32 @@
 
   .play-btn,
   .system-btn {
-    padding: 6px 14px;
-    font-size: 11px;
-    font-weight: 600;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 500;
     cursor: pointer;
-    border: 1px solid;
-    transition: all 0.2s ease;
-    background: transparent;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
   }
 
   .play-btn {
-    border-color: #00F0FF;
-    color: #00F0FF;
+    background: rgba(96, 165, 250, 0.2);
+    border-color: rgba(96, 165, 250, 0.4);
+    color: #60a5fa;
   }
 
   .play-btn:hover {
-    background: #00F0FF;
-    color: #0A0A0F;
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
-  }
-
-  .system-btn {
-    border-color: #888;
-    color: #888;
+    background: rgba(96, 165, 250, 0.4);
+    transform: translateY(-1px);
   }
 
   .system-btn:hover {
-    border-color: #FF0066;
-    color: #FF0066;
-    box-shadow: 0 0 10px rgba(255, 0, 102, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
   }
 
   .spinning {
@@ -1305,15 +1146,16 @@
   }
 
   .table-container::-webkit-scrollbar-track {
-    background: #0A0A0F;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
   }
 
   .table-container::-webkit-scrollbar-thumb {
-    background: #2A2A3A;
-    border: 1px solid #00F0FF;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
   }
 
   .table-container::-webkit-scrollbar-thumb:hover {
-    background: #00F0FF;
+    background: rgba(255, 255, 255, 0.25);
   }
 </style>

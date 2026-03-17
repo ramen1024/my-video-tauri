@@ -784,45 +784,24 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
     <title>视频扫描器</title>
     <style>
         /* ============================================
-           赛博朋克主题样式
-           配色方案:
-           - 霓虹黄: #F0E100 (主强调色)
-           - 青色: #00F0FF (次强调色)
-           - 洋红: #FF0066 (危险/警告)
-           - 深黑: #0A0A0F (主背景)
-           - 暗灰: #12121A (次背景)
-           - 边框灰: #2A2A3A
+           Glassmorphism (玻璃拟态) 主题样式
+           设计特点:
+           - 柔和渐变网格背景 (深蓝到紫色)
+           - 毛玻璃效果 (backdrop-filter: blur)
+           - 细薄优雅的分隔线
+           - 圆角设计 (12px)
+           - 柔和阴影 (营造悬浮层次感)
+           - 未来感、高级、流畅
            ============================================ */
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         
         body {{
-            font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
-            background: #0A0A0F;
+            font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f172a;
             min-height: 100vh;
-            padding: 20px;
-            color: #E0E0E0;
+            padding: 24px;
+            color: #ffffff;
             position: relative;
-        }}
-        
-        /* 扫描线背景效果 - 使用 will-change 优化性能 */
-        body::before {{
-            content: "";
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(0, 240, 255, 0.02) 2px,
-                rgba(0, 240, 255, 0.02) 4px
-            );
-            pointer-events: none;
-            z-index: 9999;
-            will-change: transform;
-            transform: translateZ(0);
         }}
         
         .container {{
@@ -832,72 +811,66 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             z-index: 1;
         }}
         
-        /* 头部 - 赛博朋克风格 */
+        /* 头部 - Glassmorphism 风格 */
         .header {{
             text-align: center;
-            margin-bottom: 30px;
-            padding: 30px;
-            background: #12121A;
-            border: 1px solid #F0E100;
+            margin-bottom: 24px;
+            padding: 32px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }}
         
         .header h1 {{
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            font-weight: 700;
-            color: #F0E100;
-            text-transform: uppercase;
-            letter-spacing: 5px;
-            text-shadow:
-                0 0 10px rgba(240, 225, 0, 0.5),
-                0 0 20px rgba(240, 225, 0, 0.3);
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }}
         
         .header .subtitle {{
-            font-size: 1.1em;
-            color: #00F0FF;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            opacity: 0.8;
+            font-size: 1em;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 0.5px;
         }}
         
         .addresses {{
-            background: #0A0A0F;
-            padding: 15px 25px;
-            border: 1px solid #00F0FF;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 12px 24px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
             display: inline-block;
-            margin-top: 15px;
-            font-family: "Courier New", monospace;
-            clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
+            margin-top: 16px;
+            font-size: 13px;
         }}
         
         .address-item {{
-            color: #00F0FF;
-            font-weight: 600;
-            text-shadow: 0 0 5px rgba(0, 240, 255, 0.5);
+            color: #60a5fa;
+            font-weight: 500;
         }}
-        /* 工具栏 - 赛博朋克风格 */
+        
+        /* 工具栏 - Glassmorphism 风格 */
         .toolbar {{
-            background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
-            border: 1px solid #2A2A3A;
-            padding: 20px;
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px 24px;
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 15px;
-            position: relative;
-        }}
-        
-        .toolbar::before {{
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #00F0FF, transparent);
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         }}
         
         .search-box {{
@@ -907,39 +880,29 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             position: relative;
         }}
         
-        .search-box::before {{
-            content: ">>>";
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #F0E100;
-            font-size: 10px;
-            letter-spacing: 2px;
-        }}
-        
         .search-box input {{
             width: 100%;
-            padding: 12px 18px 12px 45px;
-            border: 1px solid #2A2A3A;
+            padding: 12px 16px 12px 40px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
             font-size: 14px;
-            background: #0A0A0F;
-            color: #E0E0E0;
-            transition: all 0.2s;
-            font-family: "Courier New", monospace;
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            transition: all 0.3s ease;
         }}
         
         .search-box input:focus {{
             outline: none;
-            border-color: #00F0FF;
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+            border-color: rgba(96, 165, 250, 0.5);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
         }}
         
         .search-box input::placeholder {{
-            color: #555;
+            color: rgba(255, 255, 255, 0.4);
         }}
         
-        /* 排序按钮 - 赛博朋克风格 */
+        /* 排序按钮 - Glassmorphism 风格 */
         .sort-buttons {{
             display: flex;
             gap: 10px;
@@ -948,60 +911,42 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         
         .sort-btn {{
             padding: 10px 18px;
-            border: 1px solid #2A2A3A;
-            background: transparent;
-            color: #888;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.7);
             cursor: pointer;
-            font-size: 12px;
-            font-weight: 600;
-            transition: all 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }}
         
         .sort-btn:hover {{
-            border-color: #00F0FF;
-            color: #00F0FF;
-            box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(96, 165, 250, 0.4);
+            color: #60a5fa;
         }}
         
         .sort-btn.active {{
-            border-color: #F0E100;
-            color: #F0E100;
-            background: rgba(240, 225, 0, 0.1);
-            box-shadow: 0 0 15px rgba(240, 225, 0, 0.3);
+            background: rgba(96, 165, 250, 0.25);
+            border-color: rgba(96, 165, 250, 0.5);
+            color: #60a5fa;
         }}
         
-        /* 统计面板 - 赛博朋克风格 */
+        /* 统计面板 - Glassmorphism 风格 */
         .stats {{
-            background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
-            border: 1px solid #00F0FF;
-            padding: 20px;
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
             margin-bottom: 20px;
             display: flex;
             justify-content: space-around;
             flex-wrap: wrap;
-            gap: 15px;
-            position: relative;
-            clip-path: polygon(
-                0 0,
-                calc(100% - 15px) 0,
-                100% 15px,
-                100% 100%,
-                15px 100%,
-                0 calc(100% - 15px)
-            );
-        }}
-        
-        .stats::before {{
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(90deg, #00F0FF, transparent);
+            gap: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         }}
         
         .stat-item {{
@@ -1010,37 +955,26 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         
         .stat-value {{
             font-size: 2em;
-            font-weight: 700;
-            color: #00F0FF;
-            font-family: "Courier New", monospace;
-            text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+            font-weight: 600;
+            color: #60a5fa;
         }}
         
         .stat-label {{
             font-size: 0.85em;
-            color: #888;
-            margin-top: 5px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 4px;
             font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 1px;
         }}
         
-        /* 视频列表 - 赛博朋克风格 */
+        /* 视频列表 - Glassmorphism 风格 */
         .video-list {{
-            background: #12121A;
-            border: 1px solid #2A2A3A;
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
             overflow: hidden;
-            position: relative;
-        }}
-        
-        .video-list::before {{
-            content: "";
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #F0E100, transparent);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
         }}
         
         .video-item {{
@@ -1048,15 +982,13 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             grid-template-columns: auto 1fr auto auto;
             align-items: center;
             padding: 16px 20px;
-            border-bottom: 1px solid #2A2A3A;
-            transition: all 0.2s;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
             cursor: pointer;
         }}
         
         .video-item:hover {{
-            background: rgba(0, 240, 255, 0.05);
-            border-left: 2px solid #00F0FF;
-            padding-left: 18px;
+            background: rgba(255, 255, 255, 0.06);
         }}
         
         .video-item:last-child {{
@@ -1066,20 +998,21 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .video-icon {{
             width: 44px;
             height: 44px;
-            background: transparent;
-            border: 1px solid #F0E100;
+            background: rgba(96, 165, 250, 0.2);
+            border: 1px solid rgba(96, 165, 250, 0.4);
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-right: 15px;
+            margin-right: 16px;
             font-size: 18px;
-            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-            transition: all 0.2s;
+            color: #60a5fa;
+            transition: all 0.3s ease;
         }}
         
         .video-item:hover .video-icon {{
-            background: #F0E100;
-            box-shadow: 0 0 15px rgba(240, 225, 0, 0.5);
+            background: rgba(96, 165, 250, 0.35);
+            transform: scale(1.1);
         }}
         
         .video-info {{
@@ -1088,8 +1021,8 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         }}
         
         .video-name {{
-            font-weight: 600;
-            color: #E0E0E0;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.95);
             margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
@@ -1098,8 +1031,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         
         .video-meta {{
             font-size: 12px;
-            color: #888;
-            font-family: "Courier New", monospace;
+            color: rgba(255, 255, 255, 0.5);
         }}
         
         .video-meta span {{
@@ -1107,40 +1039,38 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         }}
         
         .video-ext {{
-            background: transparent;
+            background: rgba(96, 165, 250, 0.15);
             padding: 5px 12px;
-            border: 1px solid #F0E100;
+            border-radius: 6px;
             font-size: 11px;
-            font-weight: 600;
-            color: #F0E100;
+            font-weight: 500;
+            color: #60a5fa;
             text-transform: uppercase;
             margin-left: 15px;
         }}
         
         .video-size {{
-            font-weight: 700;
-            color: #00F0FF;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
             font-size: 14px;
             margin-left: 15px;
             text-align: right;
             min-width: 70px;
-            font-family: "Courier New", monospace;
-            text-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
         }}
         
         .empty {{
             text-align: center;
             padding: 60px 20px;
-            color: #888;
+            color: rgba(255, 255, 255, 0.5);
         }}
         
         .empty-icon {{
             font-size: 48px;
-            margin-bottom: 15px;
-            opacity: 0.3;
-            color: #00F0FF;
+            margin-bottom: 16px;
+            opacity: 0.5;
         }}
-        /* 播放器 - 赛博朋克风格 */
+        
+        /* 播放器 - Glassmorphism 风格 */
         .player-overlay {{
             display: none;
             position: fixed;
@@ -1148,8 +1078,9 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(10, 10, 15, 0.95);
-            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             z-index: 1000;
             justify-content: center;
             align-items: center;
@@ -1158,63 +1089,50 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         .player-container {{
             width: 90%;
             max-width: 1000px;
-            background: #12121A;
-            border: 1px solid #F0E100;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
             overflow: hidden;
-            box-shadow:
-                0 0 20px rgba(240, 225, 0, 0.3),
-                0 0 40px rgba(240, 225, 0, 0.1);
-            clip-path: polygon(
-                0 10px,
-                10px 0,
-                calc(100% - 10px) 0,
-                100% 10px,
-                100% calc(100% - 10px),
-                calc(100% - 10px) 100%,
-                10px 100%,
-                0 calc(100% - 10px)
-            );
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }}
         
         .player-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 16px 20px;
-            background: linear-gradient(90deg, #12121A 0%, #1A1A25 50%, #12121A 100%);
-            border-bottom: 1px solid #F0E100;
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }}
         
         .player-title {{
-            color: #F0E100;
+            color: #ffffff;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 500;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             flex: 1;
             margin-right: 16px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            text-shadow: 0 0 10px rgba(240, 225, 0, 0.5);
         }}
         
         .close-btn {{
-            background: transparent;
-            border: 1px solid #FF0066;
-            color: #FF0066;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #ffffff;
             cursor: pointer;
             padding: 10px 16px;
-            font-size: 18px;
-            font-weight: 700;
-            transition: all 0.2s;
-            clip-path: polygon(20% 0%, 100% 0%, 100% 80%, 80% 100%, 0% 100%, 0% 20%);
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }}
         
         .close-btn:hover {{
-            background: #FF0066;
-            color: #0A0A0F;
-            box-shadow: 0 0 15px rgba(255, 0, 102, 0.6);
+            background: rgba(239, 68, 68, 0.3);
+            border-color: rgba(239, 68, 68, 0.5);
         }}
         
         .video-player {{
@@ -1231,16 +1149,17 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
         }}
         
         ::-webkit-scrollbar-track {{
-            background: #0A0A0F;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 4px;
         }}
         
         ::-webkit-scrollbar-thumb {{
-            background: #2A2A3A;
-            border: 1px solid #00F0FF;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
         }}
         
         ::-webkit-scrollbar-thumb:hover {{
-            background: #00F0FF;
+            background: rgba(255, 255, 255, 0.25);
         }}
         
         /* 响应式设计 */
