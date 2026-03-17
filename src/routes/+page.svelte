@@ -424,7 +424,7 @@
               {#each filteredVideos as video}
               <tr>
                 <td class="col-play">
-                  <div class="play-icon">
+                  <div class="play-icon" onclick={() => playVideo(video)}>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       width="16"

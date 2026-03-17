@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync } from 'fs';
+import { copyFileSync, existsSync, renameSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
@@ -10,14 +10,16 @@ const rootDir = resolve(__dirname, '..');
 const pkg = require(resolve(rootDir, 'package.json'));
 const version = pkg.version;
 
-const exePath = resolve(rootDir, 'src-tauri/target/release/video-scanner.exe');
+// 中文名称的可执行文件路径
+const chineseExePath = resolve(rootDir, 'src-tauri/target/release/视频扫描器.exe');
 const newName = `视频扫描器_${version}_x64.exe`;
 const newPath = resolve(rootDir, 'src-tauri/target/release', newName);
 
-if (existsSync(exePath)) {
-    copyFileSync(exePath, newPath);
+if (existsSync(chineseExePath)) {
+    // 将中文名称的可执行文件重命名为带版本号的名称
+    renameSync(chineseExePath, newPath);
     console.log(`✅ 已生成: ${newName}`);
 } else {
-    console.error('❌ 找不到编译产物: video-scanner.exe');
+    console.error('❌ 找不到编译产物: 视频扫描器.exe');
     process.exit(1);
 }
