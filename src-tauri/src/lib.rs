@@ -273,6 +273,11 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
                     // map(): 转换 Option 内部的值
                     let size = metadata.as_ref().map(|m: &Metadata| m.len()).unwrap_or(0);
                     
+                    // 过滤小于1MB的文件 (1MB = 1024 * 1024 = 1048576 bytes)
+                    if size < 1_048_576 {
+                        continue;
+                    }
+                    
                     // and_then(): 链式 Option 操作
                     let modified = metadata
                         .and_then(|m: Metadata| m.modified().ok())
