@@ -122,10 +122,18 @@
     try {
       videos = await invoke("scan_videos", { folderPath: currentFolder });
     } catch (e) {
-      errorMsg = "扫描失败: " + e;
+      if (e === "扫描已取消") {
+        errorMsg = "扫描已取消";
+      } else {
+        errorMsg = "扫描失败: " + e;
+      }
     } finally {
       isScanning = false;
     }
+  }
+
+  function cancelScanning() {
+    invoke("cancel_scan");
   }
 
   function playVideo(video) {
@@ -359,6 +367,7 @@
       <div class="loading">
         <div class="spinner"></div>
         <p>正在扫描视频文件...</p>
+        <button class="btn btn-danger" onclick={cancelScanning}>取消扫描</button>
       </div>
     {:else if videos.length === 0}
       <div class="empty-state">

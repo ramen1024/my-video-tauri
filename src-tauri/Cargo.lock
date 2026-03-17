@@ -5519,11 +5519,12 @@ dependencies = [
 
 [[package]]
 name = "视频扫描器"
-version = "0.2.7"
+version = "0.2.8"
 dependencies = [
  "chrono",
  "env_logger",
  "log",
+ "once_cell",
  "parking_lot",
  "serde",
  "serde_json",

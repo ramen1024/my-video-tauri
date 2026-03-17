@@ -37,6 +37,18 @@ use std::time::SystemTime;
 // walkdir: 第三方库，递归遍历目录
 use walkdir::WalkDir;
 
+// lazy_static: 用于创建全局静态变量
+use std::sync::Arc;
+
+// ============================================
+// 全局状态
+// ============================================
+
+/// 扫描取消标志 - 用于中途取消扫描操作
+/// Arc<AtomicBool>: 线程安全的共享布尔值
+static CANCEL_SCAN_FLAG: once_cell::sync::Lazy<Arc<AtomicBool>> = 
+    once_cell::sync::Lazy::new(|| Arc::new(AtomicBool::new(false)));
+
 // ============================================
 // 数据结构定义
 // ============================================
@@ -244,6 +256,9 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
     let mut videos: Vec<VideoFile> = Vec::new();
     let base_path = Path::new(&folder_path);
 
+    // 重置取消标志
+    CANCEL_SCAN_FLAG.store(false, Ordering::SeqCst);
+    
     // WalkDir: 递归遍历目录
     // .follow_links(true): 跟随符号链接
     // .into_iter(): 转换为迭代器
@@ -253,6 +268,11 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        // 检查是否被取消
+        if CANCEL_SCAN_FLAG.load(Ordering::SeqCst) {
+            return Err("扫描已取消".to_string());
+        }
+        
         let path = entry.path();
         
         // 只处理文件，跳过目录
@@ -312,6 +332,15 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
     videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     Ok(videos)
+}
+
+/// 取消正在进行的扫描操作
+/// 
+/// # 功能
+/// 设置取消标志，使扫描循环提前退出
+#[tauri::command]
+fn cancel_scan() {
+    CANCEL_SCAN_FLAG.store(true, Ordering::SeqCst);
 }
 
 /// 使用系统默认播放器播放视频
@@ -1471,6 +1500,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_videos, 
             play_video,
+            cancel_scan,
             start_share_server,
             stop_share_server,
             get_server_status
