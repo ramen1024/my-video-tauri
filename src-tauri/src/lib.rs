@@ -749,217 +749,364 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>视频扫描器</title>
     <style>
-        /* Neumorphism 新拟态风格 */
+        /* ============================================
+           赛博朋克主题样式
+           配色方案:
+           - 霓虹黄: #F0E100 (主强调色)
+           - 青色: #00F0FF (次强调色)
+           - 洋红: #FF0066 (危险/警告)
+           - 深黑: #0A0A0F (主背景)
+           - 暗灰: #12121A (次背景)
+           - 边框灰: #2A2A3A
+           ============================================ */
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #e0e5ec;
+            font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+            background: #0A0A0F;
             min-height: 100vh;
             padding: 20px;
-            color: #4a5568;
+            color: #E0E0E0;
+            position: relative;
         }}
+        
+        /* 扫描线背景效果 - 使用 will-change 优化性能 */
+        body::before {{
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 240, 255, 0.02) 2px,
+                rgba(0, 240, 255, 0.02) 4px
+            );
+            pointer-events: none;
+            z-index: 9999;
+            will-change: transform;
+            transform: translateZ(0);
+        }}
+        
         .container {{
             max-width: 900px;
             margin: 0 auto;
+            position: relative;
+            z-index: 1;
         }}
+        
+        /* 头部 - 赛博朋克风格 */
         .header {{
             text-align: center;
             margin-bottom: 30px;
-            color: #4a5568;
             padding: 30px;
-            background: #e0e5ec;
-            border-radius: 20px;
-            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
+            background: #12121A;
+            border: 1px solid #F0E100;
         }}
+        
         .header h1 {{
             font-size: 2.5em;
             margin-bottom: 10px;
             font-weight: 700;
-            text-shadow: 2px 2px 4px rgba(255,255,255,0.5);
+            color: #F0E100;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            text-shadow:
+                0 0 10px rgba(240, 225, 0, 0.5),
+                0 0 20px rgba(240, 225, 0, 0.3);
         }}
+        
         .header .subtitle {{
-            opacity: 0.8;
             font-size: 1.1em;
-            color: #718096;
+            color: #00F0FF;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            opacity: 0.8;
         }}
+        
         .addresses {{
-            background: #e0e5ec;
+            background: #0A0A0F;
             padding: 15px 25px;
-            border-radius: 50px;
+            border: 1px solid #00F0FF;
             display: inline-block;
             margin-top: 15px;
-            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
+            font-family: "Courier New", monospace;
+            clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
         }}
+        
         .address-item {{
-            color: #3182ce;
+            color: #00F0FF;
             font-weight: 600;
+            text-shadow: 0 0 5px rgba(0, 240, 255, 0.5);
         }}
+        /* 工具栏 - 赛博朋克风格 */
         .toolbar {{
-            background: #e0e5ec;
-            border-radius: 16px;
+            background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
+            border: 1px solid #2A2A3A;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
             gap: 15px;
+            position: relative;
         }}
+        
+        .toolbar::before {{
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #00F0FF, transparent);
+        }}
+        
         .search-box {{
             flex: 1;
             min-width: 200px;
             max-width: 300px;
+            position: relative;
         }}
+        
+        .search-box::before {{
+            content: ">>>";
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #F0E100;
+            font-size: 10px;
+            letter-spacing: 2px;
+        }}
+        
         .search-box input {{
             width: 100%;
-            padding: 12px 18px;
-            border: none;
-            border-radius: 12px;
+            padding: 12px 18px 12px 45px;
+            border: 1px solid #2A2A3A;
             font-size: 14px;
-            background: #e0e5ec;
-            color: #4a5568;
-            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
+            background: #0A0A0F;
+            color: #E0E0E0;
             transition: all 0.2s;
+            font-family: "Courier New", monospace;
         }}
+        
         .search-box input:focus {{
             outline: none;
-            box-shadow: inset 5px 5px 10px #bec3c9, inset -5px -5px 10px #ffffff;
+            border-color: #00F0FF;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
         }}
+        
         .search-box input::placeholder {{
-            color: #a0aec0;
+            color: #555;
         }}
+        
+        /* 排序按钮 - 赛博朋克风格 */
         .sort-buttons {{
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
         }}
+        
         .sort-btn {{
             padding: 10px 18px;
-            border: none;
-            border-radius: 12px;
-            background: #e0e5ec;
-            color: #718096;
+            border: 1px solid #2A2A3A;
+            background: transparent;
+            color: #888;
             cursor: pointer;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s;
-            box-shadow: 3px 3px 6px #bec3c9, -3px -3px 6px #ffffff;
-        }}
-        .sort-btn:hover {{
-            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
-        }}
-        .sort-btn.active {{
-            box-shadow: inset 3px 3px 6px #bec3c9, inset -3px -3px 6px #ffffff;
-            color: #3182ce;
+            font-size: 12px;
             font-weight: 600;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
         }}
+        
+        .sort-btn:hover {{
+            border-color: #00F0FF;
+            color: #00F0FF;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+        }}
+        
+        .sort-btn.active {{
+            border-color: #F0E100;
+            color: #F0E100;
+            background: rgba(240, 225, 0, 0.1);
+            box-shadow: 0 0 15px rgba(240, 225, 0, 0.3);
+        }}
+        
+        /* 统计面板 - 赛博朋克风格 */
         .stats {{
-            background: #e0e5ec;
-            border-radius: 16px;
+            background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
+            border: 1px solid #00F0FF;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
             display: flex;
             justify-content: space-around;
             flex-wrap: wrap;
             gap: 15px;
+            position: relative;
+            clip-path: polygon(
+                0 0,
+                calc(100% - 15px) 0,
+                100% 15px,
+                100% 100%,
+                15px 100%,
+                0 calc(100% - 15px)
+            );
         }}
+        
+        .stats::before {{
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, #00F0FF, transparent);
+        }}
+        
         .stat-item {{
             text-align: center;
         }}
+        
         .stat-value {{
-            font-size: 1.8em;
+            font-size: 2em;
             font-weight: 700;
-            color: #3182ce;
+            color: #00F0FF;
+            font-family: "Courier New", monospace;
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
         }}
+        
         .stat-label {{
             font-size: 0.85em;
-            color: #718096;
+            color: #888;
             margin-top: 5px;
             font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }}
+        
+        /* 视频列表 - 赛博朋克风格 */
         .video-list {{
-            background: #e0e5ec;
-            border-radius: 16px;
+            background: #12121A;
+            border: 1px solid #2A2A3A;
             overflow: hidden;
-            box-shadow: 8px 8px 16px #bec3c9, -8px -8px 16px #ffffff;
+            position: relative;
         }}
+        
+        .video-list::before {{
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #F0E100, transparent);
+        }}
+        
         .video-item {{
             display: grid;
             grid-template-columns: auto 1fr auto auto;
             align-items: center;
             padding: 16px 20px;
-            border-bottom: 1px solid rgba(190,195,201,0.3);
+            border-bottom: 1px solid #2A2A3A;
             transition: all 0.2s;
             cursor: pointer;
         }}
+        
         .video-item:hover {{
-            background: rgba(190,195,201,0.2);
+            background: rgba(0, 240, 255, 0.05);
+            border-left: 2px solid #00F0FF;
+            padding-left: 18px;
         }}
+        
         .video-item:last-child {{
             border-bottom: none;
         }}
+        
         .video-icon {{
             width: 44px;
             height: 44px;
-            background: #e0e5ec;
-            border-radius: 12px;
+            background: transparent;
+            border: 1px solid #F0E100;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-right: 15px;
             font-size: 18px;
-            box-shadow: 3px 3px 6px #bec3c9, -3px -3px 6px #ffffff;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+            transition: all 0.2s;
         }}
+        
+        .video-item:hover .video-icon {{
+            background: #F0E100;
+            box-shadow: 0 0 15px rgba(240, 225, 0, 0.5);
+        }}
+        
         .video-info {{
             flex: 1;
             min-width: 0;
         }}
+        
         .video-name {{
             font-weight: 600;
-            color: #4a5568;
+            color: #E0E0E0;
             margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }}
+        
         .video-meta {{
             font-size: 12px;
-            color: #718096;
+            color: #888;
+            font-family: "Courier New", monospace;
         }}
+        
         .video-meta span {{
             margin-right: 15px;
         }}
+        
         .video-ext {{
-            background: #e0e5ec;
+            background: transparent;
             padding: 5px 12px;
-            border-radius: 8px;
+            border: 1px solid #F0E100;
             font-size: 11px;
             font-weight: 600;
-            color: #718096;
+            color: #F0E100;
             text-transform: uppercase;
             margin-left: 15px;
-            box-shadow: inset 2px 2px 4px #bec3c9, inset -2px -2px 4px #ffffff;
         }}
+        
         .video-size {{
             font-weight: 700;
-            color: #3182ce;
+            color: #00F0FF;
             font-size: 14px;
             margin-left: 15px;
             text-align: right;
             min-width: 70px;
+            font-family: "Courier New", monospace;
+            text-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
         }}
+        
         .empty {{
             text-align: center;
             padding: 60px 20px;
-            color: #718096;
+            color: #888;
         }}
+        
         .empty-icon {{
             font-size: 48px;
             margin-bottom: 15px;
-            opacity: 0.5;
+            opacity: 0.3;
+            color: #00F0FF;
         }}
+        /* 播放器 - 赛博朋克风格 */
         .player-overlay {{
             display: none;
             position: fixed;
@@ -967,30 +1114,45 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(224,229,236,0.95);
+            background: rgba(10, 10, 15, 0.95);
             backdrop-filter: blur(10px);
             z-index: 1000;
             justify-content: center;
             align-items: center;
         }}
+        
         .player-container {{
             width: 90%;
             max-width: 1000px;
-            background: #e0e5ec;
-            border-radius: 20px;
+            background: #12121A;
+            border: 1px solid #F0E100;
             overflow: hidden;
-            box-shadow: 20px 20px 60px #bec3c9, -20px -20px 60px #ffffff;
+            box-shadow:
+                0 0 20px rgba(240, 225, 0, 0.3),
+                0 0 40px rgba(240, 225, 0, 0.1);
+            clip-path: polygon(
+                0 10px,
+                10px 0,
+                calc(100% - 10px) 0,
+                100% 10px,
+                100% calc(100% - 10px),
+                calc(100% - 10px) 100%,
+                10px 100%,
+                0 calc(100% - 10px)
+            );
         }}
+        
         .player-header {{
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 16px 20px;
-            background: #e0e5ec;
-            box-shadow: inset 0 2px 4px rgba(255,255,255,0.8), inset 0 -2px 4px rgba(163,177,198,0.6);
+            background: linear-gradient(90deg, #12121A 0%, #1A1A25 50%, #12121A 100%);
+            border-bottom: 1px solid #F0E100;
         }}
+        
         .player-title {{
-            color: #4a5568;
+            color: #F0E100;
             font-size: 14px;
             font-weight: 600;
             overflow: hidden;
@@ -998,28 +1160,56 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             white-space: nowrap;
             flex: 1;
             margin-right: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px rgba(240, 225, 0, 0.5);
         }}
+        
         .close-btn {{
-            background: #e0e5ec;
-            border: none;
-            color: #e53e3e;
+            background: transparent;
+            border: 1px solid #FF0066;
+            color: #FF0066;
             cursor: pointer;
             padding: 10px 16px;
-            border-radius: 12px;
             font-size: 18px;
             font-weight: 700;
             transition: all 0.2s;
-            box-shadow: 5px 5px 10px #bec3c9, -5px -5px 10px #ffffff;
+            clip-path: polygon(20% 0%, 100% 0%, 100% 80%, 80% 100%, 0% 100%, 0% 20%);
         }}
+        
         .close-btn:hover {{
-            box-shadow: inset 5px 5px 10px #bec3c9, inset -5px -5px 10px #ffffff;
+            background: #FF0066;
+            color: #0A0A0F;
+            box-shadow: 0 0 15px rgba(255, 0, 102, 0.6);
         }}
+        
         .video-player {{
             width: 100%;
             display: block;
             max-height: 75vh;
             background: #000;
         }}
+        
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {{
+            width: 8px;
+            height: 8px;
+        }}
+        
+        ::-webkit-scrollbar-track {{
+            background: #0A0A0F;
+        }}
+        
+        ::-webkit-scrollbar-thumb {{
+            background: #2A2A3A;
+            border: 1px solid #00F0FF;
+        }}
+        
+        ::-webkit-scrollbar-thumb:hover {{
+            background: #00F0FF;
+        }}
+        
+        /* 响应式设计 */
         @media (max-width: 600px) {{
             .video-item {{
                 grid-template-columns: auto 1fr auto;
@@ -1035,7 +1225,10 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             }}
             .player-container {{
                 width: 100%;
-                border-radius: 0;
+                clip-path: none;
+            }}
+            .header h1 {{
+                font-size: 1.8em;
             }}
         }}
     </style>

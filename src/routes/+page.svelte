@@ -459,6 +459,17 @@
 </main>
 
 <style>
+  /* ============================================
+     赛博朋克主题样式
+     配色方案:
+     - 霓虹黄: #F0E100 (主强调色)
+     - 青色: #00F0FF (次强调色)
+     - 洋红: #FF0066 (危险/警告)
+     - 深黑: #0A0A0F (主背景)
+     - 暗灰: #12121A (次背景)
+     - 边框灰: #2A2A3A
+     ============================================ */
+
   :global(*) {
     margin: 0;
     padding: 0;
@@ -466,19 +477,30 @@
   }
 
   :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, sans-serif;
-    background: #e0e5ec;
-    color: #4a5568;
+    font-family: "Rajdhani", "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #0A0A0F;
+    color: #E0E0E0;
     overflow: hidden;
     min-height: 100vh;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :global(body) {
-      background: #1a1d23;
-      color: #a0aec0;
-    }
+  /* 扫描线背景效果 */
+  :global(body::before) {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 240, 255, 0.03) 2px,
+      rgba(0, 240, 255, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
   }
 
   .app {
@@ -487,15 +509,19 @@
     height: 100vh;
     padding: 20px;
     position: relative;
+    background: #0A0A0F;
   }
 
+  /* ============================================
+     播放器弹窗 - 赛博朋克风格
+     ============================================ */
   .player-overlay {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(224, 229, 236, 0.95);
+    background: rgba(10, 10, 15, 0.95);
     backdrop-filter: blur(10px);
     z-index: 1000;
     display: flex;
@@ -503,30 +529,25 @@
     justify-content: center;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .player-overlay {
-      background: rgba(26, 29, 35, 0.95);
-    }
-  }
-
   .player-container {
     width: 90%;
     max-width: 1200px;
-    background: #e0e5ec;
-    border-radius: 20px;
-    overflow: hidden;
+    background: #12121A;
+    border: 1px solid #F0E100;
     box-shadow:
-      20px 20px 60px #bec3c9,
-      -20px -20px 60px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .player-container {
-      background: #1a1d23;
-      box-shadow:
-        20px 20px 60px #0d0f12,
-        -20px -20px 60px #272b34;
-    }
+      0 0 20px rgba(240, 225, 0, 0.3),
+      0 0 40px rgba(240, 225, 0, 0.1),
+      inset 0 0 20px rgba(240, 225, 0, 0.05);
+    clip-path: polygon(
+      0 10px,
+      10px 0,
+      calc(100% - 10px) 0,
+      100% 10px,
+      100% calc(100% - 10px),
+      calc(100% - 10px) 100%,
+      10px 100%,
+      0 calc(100% - 10px)
+    );
   }
 
   .player-header {
@@ -534,82 +555,39 @@
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    background: #e0e5ec;
-    box-shadow:
-      inset 0 2px 4px rgba(255, 255, 255, 0.8),
-      inset 0 -2px 4px rgba(163, 177, 198, 0.6);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .player-header {
-      background: #1a1d23;
-      box-shadow:
-        inset 0 2px 4px rgba(55, 65, 81, 0.5),
-        inset 0 -2px 4px rgba(0, 0, 0, 0.5);
-    }
+    background: linear-gradient(90deg, #12121A 0%, #1A1A25 50%, #12121A 100%);
+    border-bottom: 1px solid #F0E100;
   }
 
   .player-title {
-    color: #4a5568;
+    color: #F0E100;
     font-size: 14px;
     font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .player-title {
-      color: #a0aec0;
-    }
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(240, 225, 0, 0.5);
   }
 
   .close-btn {
-    background: #e0e5ec;
-    border: none;
-    color: #e53e3e;
+    background: transparent;
+    border: 1px solid #FF0066;
+    color: #FF0066;
     cursor: pointer;
     padding: 8px;
-    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow:
-      5px 5px 10px #bec3c9,
-      -5px -5px 10px #ffffff;
     transition: all 0.2s ease;
+    clip-path: polygon(20% 0%, 100% 0%, 100% 80%, 80% 100%, 0% 100%, 0% 20%);
   }
 
   .close-btn:hover {
-    box-shadow:
-      inset 5px 5px 10px #bec3c9,
-      inset -5px -5px 10px #ffffff;
-  }
-
-  .close-btn:active {
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .close-btn {
-      background: #1a1d23;
-      color: #fc8181;
-      box-shadow:
-        5px 5px 10px #0d0f12,
-        -5px -5px 10px #272b34;
-    }
-    .close-btn:hover {
-      box-shadow:
-        inset 5px 5px 10px #0d0f12,
-        inset -5px -5px 10px #272b34;
-    }
-    .close-btn:active {
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
+    background: #FF0066;
+    color: #0A0A0F;
+    box-shadow: 0 0 15px rgba(255, 0, 102, 0.6);
   }
 
   .video-player {
@@ -619,40 +597,54 @@
     background: #000;
   }
 
+  /* ============================================
+     头部区域 - 赛博朋克风格
+     ============================================ */
   .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 20px 24px;
-    background: #e0e5ec;
-    border-radius: 20px;
-    box-shadow:
-      8px 8px 16px #bec3c9,
-      -8px -8px 16px #ffffff;
+    background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
+    border: 1px solid #F0E100;
     margin-bottom: 20px;
+    position: relative;
+    clip-path: polygon(
+      0 0,
+      calc(100% - 20px) 0,
+      100% 20px,
+      100% 100%,
+      20px 100%,
+      0 calc(100% - 20px)
+    );
   }
 
-  @media (prefers-color-scheme: dark) {
-    .header {
-      background: #1a1d23;
-      box-shadow:
-        8px 8px 16px #0d0f12,
-        -8px -8px 16px #272b34;
-    }
+  .header::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #F0E100, transparent);
+    animation: scanline 3s linear infinite;
+  }
+
+  @keyframes scanline {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
 
   .title {
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 700;
-    color: #4a5568;
-    text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .title {
-      color: #a0aec0;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-    }
+    color: #F0E100;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    text-shadow:
+      0 0 10px rgba(240, 225, 0, 0.5),
+      0 0 20px rgba(240, 225, 0, 0.3),
+      0 0 30px rgba(240, 225, 0, 0.1);
   }
 
   .actions {
@@ -660,185 +652,205 @@
     gap: 12px;
   }
 
+  /* ============================================
+     按钮 - 赛博朋克风格（斜切角设计）
+     ============================================ */
   .btn {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 20px;
-    border: none;
-    border-radius: 12px;
-    font-size: 14px;
+    padding: 12px 24px;
+    border: 1px solid;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
-    background: #e0e5ec;
-    color: #4a5568;
-    box-shadow:
-      5px 5px 10px #bec3c9,
-      -5px -5px 10px #ffffff;
+    transition: all 0.3s ease;
+    background: transparent;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
+    clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
+  }
+
+  .btn::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .btn:hover::before {
+    left: 100%;
   }
 
   .btn:hover:not(:disabled) {
-    box-shadow:
-      inset 5px 5px 10px #bec3c9,
-      inset -5px -5px 10px #ffffff;
+    transform: translateY(-2px);
   }
 
   .btn:active:not(:disabled) {
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
+    transform: translateY(0);
   }
 
   .btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
-    box-shadow:
-      inset 2px 2px 4px #bec3c9,
-      inset -2px -2px 4px #ffffff;
+    filter: grayscale(100%);
   }
 
-  @media (prefers-color-scheme: dark) {
-    .btn {
-      background: #1a1d23;
-      color: #a0aec0;
-      box-shadow:
-        5px 5px 10px #0d0f12,
-        -5px -5px 10px #272b34;
-    }
-    .btn:hover:not(:disabled) {
-      box-shadow:
-        inset 5px 5px 10px #0d0f12,
-        inset -5px -5px 10px #272b34;
-    }
-    .btn:active:not(:disabled) {
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
-    .btn:disabled {
-      box-shadow:
-        inset 2px 2px 4px #0d0f12,
-        inset -2px -2px 4px #272b34;
-    }
-  }
-
+  /* 主按钮 - 霓虹黄 */
   .btn-primary {
-    color: #3182ce;
+    border-color: #F0E100;
+    color: #F0E100;
+    background: rgba(240, 225, 0, 0.1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    .btn-primary {
-      color: #63b3ed;
-    }
+  .btn-primary:hover:not(:disabled) {
+    background: #F0E100;
+    color: #0A0A0F;
+    box-shadow:
+      0 0 10px rgba(240, 225, 0, 0.5),
+      0 0 20px rgba(240, 225, 0, 0.3),
+      0 0 30px rgba(240, 225, 0, 0.1);
   }
 
+  /* 次按钮 - 青色 */
   .btn-secondary {
-    color: #718096;
+    border-color: #00F0FF;
+    color: #00F0FF;
+    background: rgba(0, 240, 255, 0.1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    .btn-secondary {
-      color: #9ca3af;
-    }
+  .btn-secondary:hover:not(:disabled) {
+    background: #00F0FF;
+    color: #0A0A0F;
+    box-shadow:
+      0 0 10px rgba(0, 240, 255, 0.5),
+      0 0 20px rgba(0, 240, 255, 0.3);
   }
 
+  /* 分享按钮 - 橙色 */
   .btn-share {
-    color: #38a169;
+    border-color: #FF6600;
+    color: #FF6600;
+    background: rgba(255, 102, 0, 0.1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    .btn-share {
-      color: #68d391;
-    }
+  .btn-share:hover:not(:disabled) {
+    background: #FF6600;
+    color: #0A0A0F;
+    box-shadow:
+      0 0 10px rgba(255, 102, 0, 0.5),
+      0 0 20px rgba(255, 102, 0, 0.3);
   }
 
+  /* 危险按钮 - 红色 */
   .btn-danger {
-    color: #e53e3e;
+    border-color: #FF0066;
+    color: #FF0066;
+    background: rgba(255, 0, 102, 0.1);
   }
 
-  @media (prefers-color-scheme: dark) {
-    .btn-danger {
-      color: #fc8181;
-    }
+  .btn-danger:hover:not(:disabled) {
+    background: #FF0066;
+    color: #0A0A0F;
+    box-shadow:
+      0 0 10px rgba(255, 0, 102, 0.5),
+      0 0 20px rgba(255, 0, 102, 0.3);
   }
 
+  /* ============================================
+     文件夹路径 - 赛博朋克风格
+     ============================================ */
   .folder-path {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 16px 20px;
-    background: #e0e5ec;
-    border-radius: 16px;
+    background: #12121A;
+    border: 1px solid #2A2A3A;
+    border-left: 3px solid #00F0FF;
     margin-bottom: 16px;
     font-size: 13px;
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
+    position: relative;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .folder-path {
-      background: #1a1d23;
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
+  .folder-path::before {
+    content: ">>>";
+    position: absolute;
+    right: 20px;
+    color: #00F0FF;
+    opacity: 0.5;
+    font-size: 10px;
+    letter-spacing: 2px;
   }
 
+  .path-label {
+    color: #00F0FF;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .path-value {
+    color: #E0E0E0;
+    word-break: break-all;
+    font-weight: 500;
+    font-family: "Courier New", monospace;
+  }
+
+  /* ============================================
+     共享信息面板 - 赛博朋克风格
+     ============================================ */
   .share-info {
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 20px 24px;
-    background: #e0e5ec;
-    border-radius: 20px;
+    background: linear-gradient(135deg, #12121A 0%, #1A1A25 100%);
+    border: 1px solid #FF6600;
     margin-bottom: 16px;
-    box-shadow:
-      8px 8px 16px #bec3c9,
-      -8px -8px 16px #ffffff;
+    position: relative;
+    clip-path: polygon(
+      0 0,
+      calc(100% - 15px) 0,
+      100% 15px,
+      100% 100%,
+      15px 100%,
+      0 calc(100% - 15px)
+    );
   }
 
-  @media (prefers-color-scheme: dark) {
-    .share-info {
-      background: #1a1d23;
-      box-shadow:
-        8px 8px 16px #0d0f12,
-        -8px -8px 16px #272b34;
-    }
+  .share-info::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, #FF6600, transparent);
   }
 
   .share-label {
     font-weight: 700;
-    color: #38a169;
+    color: #FF6600;
     font-size: 14px;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .share-label {
-      color: #68d391;
-    }
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(255, 102, 0, 0.5);
   }
 
   .firewall-hint {
-    font-size: 12px;
-    color: #718096;
+    font-size: 11px;
+    color: #888;
     padding: 12px 16px;
-    background: #e0e5ec;
-    border-radius: 12px;
-    box-shadow:
-      inset 2px 2px 4px #bec3c9,
-      inset -2px -2px 4px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .firewall-hint {
-      color: #9ca3af;
-      background: #1a1d23;
-      box-shadow:
-        inset 2px 2px 4px #0d0f12,
-        inset -2px -2px 4px #272b34;
-    }
+    background: rgba(255, 0, 102, 0.1);
+    border-left: 2px solid #FF0066;
+    font-family: "Courier New", monospace;
   }
 
   .share-content {
@@ -851,26 +863,15 @@
   .qr-code {
     width: 120px;
     height: 120px;
-    border-radius: 16px;
-    background: #e0e5ec;
-    padding: 12px;
-    box-shadow:
-      5px 5px 10px #bec3c9,
-      -5px -5px 10px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .qr-code {
-      background: #1a1d23;
-      box-shadow:
-        5px 5px 10px #0d0f12,
-        -5px -5px 10px #272b34;
-    }
+    background: #0A0A0F;
+    padding: 8px;
+    border: 1px solid #00F0FF;
+    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.3));
   }
 
   .share-address {
     font-size: 13px;
-    color: #3182ce;
+    color: #00F0FF;
     word-break: break-all;
     display: flex;
     flex-direction: column;
@@ -878,23 +879,16 @@
   }
 
   .share-address a {
-    color: #3182ce;
+    color: #F0E100;
     text-decoration: none;
     font-size: 15px;
     font-weight: 600;
+    font-family: "Courier New", monospace;
+    text-shadow: 0 0 10px rgba(240, 225, 0, 0.3);
   }
 
   .share-address a:hover {
-    text-decoration: underline;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .share-address {
-      color: #63b3ed;
-    }
-    .share-address a {
-      color: #63b3ed;
-    }
+    text-shadow: 0 0 20px rgba(240, 225, 0, 0.6);
   }
 
   .ip-list {
@@ -906,31 +900,28 @@
 
   .ip-btn {
     padding: 8px 16px;
-    border: none;
-    border-radius: 10px;
-    background: #e0e5ec;
-    color: #4a5568;
+    border: 1px solid #2A2A3A;
+    background: transparent;
+    color: #888;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow:
-      3px 3px 6px #bec3c9,
-      -3px -3px 6px #ffffff;
+    font-family: "Courier New", monospace;
+    clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
   }
 
   .ip-btn:hover {
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
+    border-color: #00F0FF;
+    color: #00F0FF;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
   }
 
   .ip-btn.selected {
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
-    color: #3182ce;
-    font-weight: 600;
+    border-color: #F0E100;
+    color: #F0E100;
+    background: rgba(240, 225, 0, 0.1);
+    box-shadow: 0 0 15px rgba(240, 225, 0, 0.3);
   }
 
   .selected-link {
@@ -938,126 +929,84 @@
     font-weight: 600;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .ip-btn {
-      background: #1a1d23;
-      color: #a0aec0;
-      box-shadow:
-        3px 3px 6px #0d0f12,
-        -3px -3px 6px #272b34;
-    }
-    .ip-btn:hover {
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
-    .ip-btn.selected {
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-      color: #63b3ed;
-    }
-  }
-
-  .path-label {
-    color: #718096;
-    font-weight: 600;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .path-label {
-      color: #9ca3af;
-    }
-  }
-
-  .path-value {
-    color: #3182ce;
-    word-break: break-all;
-    font-weight: 500;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .path-value {
-      color: #63b3ed;
-    }
-  }
-
+  /* ============================================
+     错误消息 - 赛博朋克风格
+     ============================================ */
   .error-message {
     display: flex;
     align-items: center;
     gap: 10px;
     padding: 16px 20px;
-    background: #e0e5ec;
-    color: #e53e3e;
-    border-radius: 16px;
+    background: rgba(255, 0, 102, 0.1);
+    color: #FF0066;
+    border: 1px solid #FF0066;
+    border-left: 4px solid #FF0066;
     margin-bottom: 16px;
     font-size: 13px;
     font-weight: 500;
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
+    animation: errorPulse 2s ease-in-out infinite;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .error-message {
-      background: #1a1d23;
-      color: #fc8181;
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
+  @keyframes errorPulse {
+    0%, 100% { box-shadow: 0 0 5px rgba(255, 0, 102, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(255, 0, 102, 0.6); }
   }
 
+  /* ============================================
+     内容区域 - 赛博朋克风格
+     ============================================ */
   .content {
     flex: 1;
-    background: #e0e5ec;
-    border-radius: 20px;
-    box-shadow:
-      8px 8px 16px #bec3c9,
-      -8px -8px 16px #ffffff;
+    background: #12121A;
+    border: 1px solid #2A2A3A;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .content {
-      background: #1a1d23;
-      box-shadow:
-        8px 8px 16px #0d0f12,
-        -8px -8px 16px #272b34;
-    }
+  .content::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #00F0FF, transparent);
   }
 
+  /* ============================================
+     加载状态 - 赛博朋克风格
+     ============================================ */
   .loading {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #718096;
+    color: #00F0FF;
+    gap: 16px;
+  }
+
+  .loading p {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    animation: textFlicker 2s infinite;
+  }
+
+  @keyframes textFlicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
   }
 
   .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid #e0e5ec;
-    border-top-color: #3182ce;
-    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    border: 2px solid #2A2A3A;
+    border-top-color: #F0E100;
+    border-right-color: #00F0FF;
     animation: spin 1s linear infinite;
-    box-shadow:
-      3px 3px 6px #bec3c9,
-      -3px -3px 6px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .spinner {
-      border-color: #1a1d23;
-      border-top-color: #63b3ed;
-      box-shadow:
-        3px 3px 6px #0d0f12,
-        -3px -3px 6px #272b34;
-    }
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   }
 
   @keyframes spin {
@@ -1066,119 +1015,109 @@
     }
   }
 
+  /* ============================================
+     空状态 - 赛博朋克风格
+     ============================================ */
   .empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: #718096;
+    color: #888;
     padding: 40px;
   }
 
   .empty-state svg {
     margin-bottom: 16px;
-    opacity: 0.5;
+    opacity: 0.3;
+    color: #00F0FF;
+  }
+
+  .empty-state p {
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 
   .empty-state .hint {
     margin-top: 16px;
-    font-size: 12px;
-    color: #3182ce;
-    opacity: 0.8;
+    font-size: 11px;
+    color: #F0E100;
+    opacity: 0.6;
+    font-family: "Courier New", monospace;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .empty-state .hint {
-      color: #63b3ed;
-    }
-  }
-
+  /* ============================================
+     工具栏 - 赛博朋克风格
+     ============================================ */
   .video-toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 16px 20px;
-    border-bottom: 1px solid transparent;
+    border-bottom: 1px solid #2A2A3A;
     flex-shrink: 0;
     gap: 16px;
-    box-shadow:
-      inset 0 -2px 4px rgba(190, 195, 201, 0.3);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-toolbar {
-      box-shadow:
-        inset 0 -2px 4px rgba(13, 15, 18, 0.5);
-    }
+    background: linear-gradient(90deg, #12121A 0%, #1A1A25 100%);
   }
 
   .video-count {
     font-size: 13px;
-    color: #718096;
-    font-weight: 500;
+    color: #00F0FF;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 
   .search-box {
     flex: 0 0 auto;
     max-width: 250px;
+    position: relative;
+  }
+
+  .search-box::before {
+    content: ">>>";
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #F0E100;
+    font-size: 10px;
+    letter-spacing: 2px;
   }
 
   .search-box input {
     width: 100%;
-    padding: 10px 14px;
-    border: none;
-    border-radius: 12px;
+    padding: 10px 14px 10px 40px;
+    border: 1px solid #2A2A3A;
     font-size: 13px;
-    background: #e0e5ec;
-    color: #4a5568;
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
+    background: #0A0A0F;
+    color: #E0E0E0;
     transition: all 0.2s ease;
+    font-family: "Courier New", monospace;
   }
 
   .search-box input:focus {
     outline: none;
-    box-shadow:
-      inset 5px 5px 10px #bec3c9,
-      inset -5px -5px 10px #ffffff;
+    border-color: #00F0FF;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
   }
 
   .search-box input::placeholder {
-    color: #a0aec0;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .search-box input {
-      background: #1a1d23;
-      color: #a0aec0;
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
-    .search-box input:focus {
-      box-shadow:
-        inset 5px 5px 10px #0d0f12,
-        inset -5px -5px 10px #272b34;
-    }
+    color: #555;
   }
 
   .no-results {
     padding: 40px 20px;
     text-align: center;
-    color: #718096;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .video-count {
-      color: #9ca3af;
-    }
-    .no-results {
-      color: #9ca3af;
-    }
-  }
-
+  /* ============================================
+     视频表格 - 赛博朋克风格
+     ============================================ */
   .table-container {
     flex: 1;
     overflow: auto;
@@ -1194,17 +1133,18 @@
   .video-table th {
     position: sticky;
     top: 0;
-    background: #e0e5ec;
+    background: #0A0A0F;
     padding: 14px 20px;
     text-align: left;
     font-weight: 700;
-    color: #4a5568;
-    border-bottom: 2px solid transparent;
+    color: #F0E100;
+    border-bottom: 2px solid #F0E100;
     cursor: pointer;
     user-select: none;
     white-space: nowrap;
-    box-shadow:
-      inset 0 -2px 4px rgba(190, 195, 201, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 11px;
   }
 
   .video-table th.sortable::after {
@@ -1212,6 +1152,7 @@
     margin-left: 6px;
     opacity: 0.4;
     font-size: 12px;
+    color: #00F0FF;
   }
 
   .video-table th.sortable:hover::after {
@@ -1219,42 +1160,20 @@
   }
 
   .video-table th:hover {
-    color: #3182ce;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-table th {
-      background: #1a1d23;
-      color: #a0aec0;
-      box-shadow:
-        inset 0 -2px 4px rgba(13, 15, 18, 0.5);
-    }
-    .video-table th:hover {
-      color: #63b3ed;
-    }
+    color: #00F0FF;
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
   }
 
   .sort-icon {
     margin-left: 4px;
     font-size: 10px;
-    color: #3182ce;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .sort-icon {
-      color: #63b3ed;
-    }
+    color: #F0E100;
+    text-shadow: 0 0 5px rgba(240, 225, 0, 0.5);
   }
 
   .video-table td {
     padding: 12px 20px;
-    border-bottom: 1px solid rgba(190, 195, 201, 0.3);
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-table td {
-      border-bottom-color: rgba(13, 15, 18, 0.5);
-    }
+    border-bottom: 1px solid #2A2A3A;
   }
 
   .video-table tr {
@@ -1263,13 +1182,12 @@
   }
 
   .video-table tbody tr:hover {
-    background: rgba(190, 195, 201, 0.2);
+    background: rgba(0, 240, 255, 0.05);
+    border-left: 2px solid #00F0FF;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .video-table tbody tr:hover {
-      background: rgba(55, 65, 81, 0.3);
-    }
+  .video-table tbody tr:hover td:first-child {
+    padding-left: 18px;
   }
 
   .col-play {
@@ -1284,10 +1202,14 @@
   .col-size {
     width: 100px;
     text-align: right;
+    font-family: "Courier New", monospace;
+    color: #00F0FF;
   }
 
   .col-date {
     width: 180px;
+    font-family: "Courier New", monospace;
+    color: #888;
   }
 
   .col-type {
@@ -1301,119 +1223,88 @@
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: #e0e5ec;
-    border-radius: 50%;
-    color: #3182ce;
-    box-shadow:
-      3px 3px 6px #bec3c9,
-      -3px -3px 6px #ffffff;
+    background: transparent;
+    border: 1px solid #F0E100;
+    color: #F0E100;
     transition: all 0.2s ease;
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
   }
 
   .play-icon:hover {
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .play-icon {
-      background: #1a1d23;
-      color: #63b3ed;
-      box-shadow:
-        3px 3px 6px #0d0f12,
-        -3px -3px 6px #272b34;
-    }
-    .play-icon:hover {
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
+    background: #F0E100;
+    color: #0A0A0F;
+    box-shadow: 0 0 15px rgba(240, 225, 0, 0.5);
   }
 
   .video-name {
     font-weight: 600;
-    color: #4a5568;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-name {
-      color: #e2e8f0;
-    }
+    color: #E0E0E0;
   }
 
   .video-ext {
     margin-left: 6px;
-    color: #718096;
-    font-size: 12px;
+    color: #F0E100;
+    font-size: 11px;
     font-weight: 500;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .video-ext {
-      color: #9ca3af;
-    }
+    text-transform: uppercase;
   }
 
   .play-btn,
   .system-btn {
     padding: 6px 14px;
-    border-radius: 10px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
-    border: none;
+    border: 1px solid;
     transition: all 0.2s ease;
-    background: #e0e5ec;
-    box-shadow:
-      3px 3px 6px #bec3c9,
-      -3px -3px 6px #ffffff;
-  }
-
-  .play-btn:hover,
-  .system-btn:hover {
-    box-shadow:
-      inset 3px 3px 6px #bec3c9,
-      inset -3px -3px 6px #ffffff;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .play-btn,
-    .system-btn {
-      background: #1a1d23;
-      box-shadow:
-        3px 3px 6px #0d0f12,
-        -3px -3px 6px #272b34;
-    }
-    .play-btn:hover,
-    .system-btn:hover {
-      box-shadow:
-        inset 3px 3px 6px #0d0f12,
-        inset -3px -3px 6px #272b34;
-    }
+    background: transparent;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    clip-path: polygon(10% 0%, 100% 0%, 100% 70%, 90% 100%, 0% 100%, 0% 30%);
   }
 
   .play-btn {
-    color: #3182ce;
+    border-color: #00F0FF;
+    color: #00F0FF;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .play-btn {
-      color: #63b3ed;
-    }
+  .play-btn:hover {
+    background: #00F0FF;
+    color: #0A0A0F;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
   }
 
   .system-btn {
-    color: #718096;
+    border-color: #888;
+    color: #888;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .system-btn {
-      color: #9ca3af;
-    }
+  .system-btn:hover {
+    border-color: #FF0066;
+    color: #FF0066;
+    box-shadow: 0 0 10px rgba(255, 0, 102, 0.3);
   }
 
   .spinning {
     animation: spin 1s linear infinite;
+  }
+
+  /* 滚动条样式 */
+  .table-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .table-container::-webkit-scrollbar-track {
+    background: #0A0A0F;
+  }
+
+  .table-container::-webkit-scrollbar-thumb {
+    background: #2A2A3A;
+    border: 1px solid #00F0FF;
+  }
+
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: #00F0FF;
   }
 </style>
