@@ -120,7 +120,10 @@
     videos = [];
 
     try {
-      videos = await invoke("scan_videos", { folderPath: currentFolder });
+      // 1. 扫描文件夹（更新单数据源）
+      await invoke("scan_videos", { folderPath: currentFolder });
+      // 2. 从单数据源获取视频列表
+      videos = await invoke("get_shared_videos");
     } catch (e) {
       if (e === "扫描已取消") {
         errorMsg = "扫描已取消";

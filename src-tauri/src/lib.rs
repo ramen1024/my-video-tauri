@@ -39,6 +39,7 @@ use walkdir::WalkDir;
 
 // lazy_static: 用于创建全局静态变量
 use std::sync::Arc;
+use std::sync::RwLock;
 
 // ============================================
 // 全局状态
@@ -48,6 +49,15 @@ use std::sync::Arc;
 /// Arc<AtomicBool>: 线程安全的共享布尔值
 static CANCEL_SCAN_FLAG: once_cell::sync::Lazy<Arc<AtomicBool>> = 
     once_cell::sync::Lazy::new(|| Arc::new(AtomicBool::new(false)));
+
+/// 共享视频列表 - 用于 HTTP 服务器动态刷新
+/// Arc<RwLock<>>: 线程安全的读写锁，允许多个读取者或一个写入者
+static SHARED_VIDEOS: once_cell::sync::Lazy<Arc<RwLock<Vec<VideoFile>>>> = 
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(Vec::new())));
+
+/// 共享文件夹路径 - 用于重新扫描
+static SHARED_FOLDER_PATH: once_cell::sync::Lazy<Arc<RwLock<String>>> = 
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(String::new())));
 
 // ============================================
 // 数据结构定义
@@ -227,10 +237,10 @@ fn get_local_ips() -> Vec<String> {
 /// - `folder_path`: 要扫描的文件夹路径
 /// 
 /// # 返回
-/// - `Ok(Vec<VideoFile>)`: 视频文件列表
+/// - `Ok(())`: 扫描成功
 /// - `Err(String)`: 错误信息
 #[tauri::command]
-fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
+fn scan_videos(folder_path: String) -> Result<(), String> {
     // Path::new(): 从字符串创建路径对象
     let path = Path::new(&folder_path);
     
@@ -331,7 +341,31 @@ fn scan_videos(folder_path: String) -> Result<Vec<VideoFile>, String> {
     // cmp(): 比较两个值
     videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
-    Ok(videos)
+    // 更新共享视频列表（单数据源）
+    if let Ok(mut shared) = SHARED_VIDEOS.write() {
+        *shared = videos;
+    }
+    
+    // 更新共享文件夹路径
+    if let Ok(mut shared_path) = SHARED_FOLDER_PATH.write() {
+        *shared_path = folder_path;
+    }
+
+    Ok(())
+}
+
+/// 获取共享视频列表
+/// 
+/// # 功能
+/// 从单数据源 SHARED_VIDEOS 读取视频列表
+/// 
+/// # 返回
+/// - `Ok(Vec<VideoFile>)`: 视频文件列表
+#[tauri::command]
+fn get_shared_videos() -> Result<Vec<VideoFile>, String> {
+    SHARED_VIDEOS.read()
+        .map(|videos| videos.clone())
+        .map_err(|_| "无法读取视频列表".to_string())
 }
 
 /// 取消正在进行的扫描操作
@@ -380,22 +414,18 @@ fn play_video(file_path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 启动局域网共享服务器
-/// 
-/// # 功能
-/// 1. 扫描指定文件夹中的视频
-/// 2. 启动 HTTP 服务器
-/// 3. 支持视频流传输（Range 请求）
-/// 
+
+
+/// 启动共享服务器
+///
 /// # HTTP 服务器路由
 /// - `/`: 主页（视频列表）
 /// - `/videos`: 视频列表 JSON API
+/// - `/refresh`: 刷新视频列表 API
 /// - `/video/<path>`: 视频文件流
 #[tauri::command]
 fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, String> {
     // 检查服务器是否已在运行
-    // load(): 读取原子值
-    // Ordering::SeqCst: 顺序一致性内存排序（最严格）
     if SERVER_RUNNING.load(Ordering::SeqCst) {
         return Err("服务器已在运行".to_string());
     }
@@ -405,65 +435,20 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
         return Err("无效的文件夹路径".to_string());
     }
 
-    // 扫描视频文件（与 scan_videos 类似）
-    let video_extensions = [
-        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-    ];
-
-    let mut videos: Vec<VideoFile> = Vec::new();
-    let base_path = Path::new(&folder_path);
-
-    for entry in WalkDir::new(&folder_path)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                let ext_lower = ext.to_string_lossy().to_lowercase();
-                if video_extensions.contains(&ext_lower.as_str()) {
-                    let metadata: Option<Metadata> = fs::metadata(path).ok();
-                    let size = metadata.as_ref().map(|m: &Metadata| m.len()).unwrap_or(0);
-                    let modified = metadata
-                        .and_then(|m: Metadata| m.modified().ok())
-                        .map(format_system_time);
-
-                    let relative_path = path.strip_prefix(base_path)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    videos.push(VideoFile {
-                        name: path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                        path: path.to_string_lossy().to_string(),
-                        relative_path,
-                        size,
-                        modified,
-                        extension: ext_lower,
-                    });
-                }
-            }
-        }
-    }
-
-    videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // 扫描视频文件（scan_videos 会自动更新 SHARED_VIDEOS 和 SHARED_FOLDER_PATH）
+    scan_videos(folder_path.clone())?;
+    
+    // 从单数据源获取视频列表
+    let videos = get_shared_videos()?;
 
     // 获取本机 IP 地址
     let ips = get_local_ips();
     
     // 克隆数据用于新线程
-    // 为什么需要克隆？
-    // - 新线程需要拥有数据的所有权
-    // - 原数据需要返回给调用者
     let ips_clone = ips.clone();
-    let videos_clone = videos.clone();
     let folder_path_clone = folder_path.clone();
 
     // 设置服务器运行状态
-    // store(): 写入原子值
     SERVER_RUNNING.store(true, Ordering::SeqCst);
 
     // std::thread::spawn: 创建新线程
@@ -490,7 +475,9 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                     let response: tiny_http::Response<Box<dyn Read + Send>> = match url {
                         // 主页
                         "/" | "/index.html" => {
-                            let html = generate_html(&videos_clone, &ips_clone, port);
+                            // 从共享状态读取视频列表
+                            let videos = SHARED_VIDEOS.read().map(|v| v.clone()).unwrap_or_default();
+                            let html = generate_html(&videos, &ips_clone, port);
                             let html_bytes = html.into_bytes();
                             let html_len = html_bytes.len();
                             let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(html_bytes));
@@ -505,10 +492,42 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 None,
                             )
                         }
-                        // 视频 API
+                        // 视频 API - 从共享状态读取
                         "/videos" => {
-                            let json = serde_json::to_string(&videos_clone).unwrap();
+                            let videos = SHARED_VIDEOS.read().map(|v| v.clone()).unwrap_or_default();
+                            let json = serde_json::to_string(&videos).unwrap();
                             let json_bytes = json.into_bytes();
+                            let json_len = json_bytes.len();
+                            let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
+                            tiny_http::Response::new(
+                                200.into(),
+                                vec![
+                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
+                                    // 禁用缓存，确保获取最新数据
+                                    tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache, no-store, must-revalidate"[..]).unwrap(),
+                                ],
+                                cursor,
+                                Some(json_len),
+                                None,
+                            )
+                        }
+                        // 刷新 API - 重新扫描文件夹
+                        "/refresh" => {
+                            // 先读取文件夹路径，然后释放读锁，避免死锁
+                            let folder_path = SHARED_FOLDER_PATH.read().map(|p| p.clone()).unwrap_or_default();
+                            // 注意：必须在这里释放读锁后才能调用 scan_videos，
+                            // 因为 scan_videos 内部会获取写锁
+                            let result = if !folder_path.is_empty() {
+                                match scan_videos(folder_path) {
+                                    Ok(_) => r#"{"success": true, "message": "视频列表已刷新"}"#,
+                                    Err(e) => &format!(r#"{{"success": false, "message": "{}"}}"#, e),
+                                }
+                            } else {
+                                r#"{"success": false, "message": "未设置共享文件夹"}"#
+                            };
+                            let json_bytes = result.as_bytes().to_vec();
                             let json_len = json_bytes.len();
                             let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
                             tiny_http::Response::new(
@@ -530,7 +549,12 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                             
                             // Windows 路径分隔符转换
                             let video_name_fixed = video_name_decoded.replace("/", "\\");
-                            let video_path = Path::new(&folder_path_clone).join(&video_name_fixed);
+                            
+                            // 从共享状态获取最新的文件夹路径
+                            let folder_path = SHARED_FOLDER_PATH.read()
+                                .map(|p| p.clone())
+                                .unwrap_or_else(|_| folder_path_clone.clone());
+                            let video_path = Path::new(&folder_path).join(&video_name_fixed);
                             
                             println!("Video request: {} -> {} -> {}", video_name, video_name_decoded, video_path.display());
                             
@@ -748,24 +772,7 @@ fn get_server_status() -> bool {
 /// 
 /// # 返回
 /// 完整的 HTML 页面字符串
-fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
-    // 构建视频数据 JSON 数组
-    let video_data: String = videos
-        .iter()
-        .map(|v| {
-            let video_url = format!("/video/{}", urlencoding_encode(&v.relative_path));
-            format!(
-                r#"{{"name":"{}","url":"{}","size":{},"modified":"{}","extension":"{}"}}"#,
-                v.name.replace("\"", "\\\""),
-                video_url,
-                v.size,
-                v.modified.as_ref().map(|s| s.as_str()).unwrap_or(""),
-                v.extension
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-
+fn generate_html(_videos: &[VideoFile], ips: &[String], port: u16) -> String {
     // 构建地址显示
     let addresses: String = ips
         .iter()
@@ -1205,6 +1212,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
                 <button class="sort-btn" onclick="sortVideos('size', 'asc')">大小 ↑</button>
                 <button class="sort-btn" onclick="sortVideos('modified', 'desc')">时间 ↓</button>
                 <button class="sort-btn" onclick="sortVideos('modified', 'asc')">时间 ↑</button>
+                <button class="sort-btn" onclick="refreshVideos()" id="refreshBtn" title="刷新列表">🔄 刷新</button>
             </div>
         </div>
         
@@ -1235,10 +1243,65 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
     </div>
     
     <script>
-        // 视频数据数组
-        const videos = [{}];
+        // 视频数据数组 - 初始为空，从服务器获取
+        let videos = [];
         let currentSort = {{ field: 'name', order: 'asc' }};
         let searchTerm = '';
+        let isRefreshing = false;
+        
+        // 从服务器获取视频列表
+        async function fetchVideos() {{
+            try {{
+                const response = await fetch('/videos', {{
+                    cache: 'no-cache',
+                    headers: {{ 'Cache-Control': 'no-cache' }}
+                }});
+                if (response.ok) {{
+                    const data = await response.json();
+                    videos = data;
+                    renderVideos();
+                }} else {{
+                    console.error('获取视频列表失败:', response.status);
+                }}
+            }} catch (error) {{
+                console.error('获取视频列表出错:', error);
+            }}
+        }}
+        
+        // 刷新视频列表（重新扫描文件夹）
+        async function refreshVideos() {{
+            if (isRefreshing) return;
+            isRefreshing = true;
+            
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.textContent = '⏳ 刷新中...';
+            refreshBtn.disabled = true;
+            
+            try {{
+                // 调用刷新 API
+                const response = await fetch('/refresh', {{
+                    method: 'POST',
+                    cache: 'no-cache'
+                }});
+                
+                if (response.ok) {{
+                    const result = await response.json();
+                    console.log('刷新结果:', result.message);
+                    // 重新获取视频列表
+                    await fetchVideos();
+                }} else {{
+                    console.error('刷新失败:', response.status);
+                    alert('刷新失败，请重试');
+                }}
+            }} catch (error) {{
+                console.error('刷新出错:', error);
+                alert('刷新出错: ' + error.message);
+            }} finally {{
+                isRefreshing = false;
+                refreshBtn.textContent = '🔄 刷新';
+                refreshBtn.disabled = false;
+            }}
+        }}
         
         // 格式化文件大小
         function formatSize(bytes) {{
@@ -1308,7 +1371,7 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             }}
             
             list.innerHTML = filtered.map(v => `
-                <div class="video-item" onclick="openPlayer('${{v.url}}', '${{v.name.replace(/'/g, "\\\\'")}}')">
+                <div class="video-item" onclick="openPlayer('/video/${{encodeURIComponent(v.relative_path)}}', '${{v.name.replace(/'/g, "\\\\'")}}')">
                     <div class="video-icon">${{getExtIcon(v.extension)}}</div>
                     <div class="video-info">
                         <div class="video-name">${{v.name}}</div>
@@ -1345,11 +1408,15 @@ fn generate_html(videos: &[VideoFile], ips: &[String], port: u16) -> String {
             if (e.key === 'Escape') closePlayer();
         }});
         
-        // 初始渲染
-        renderVideos();
+        // 页面加载时从服务器获取视频列表
+        document.addEventListener('DOMContentLoaded', function() {{
+            fetchVideos();
+            // 每30秒自动刷新一次
+            setInterval(fetchVideos, 30000);
+        }});
     </script>
 </body>
-</html>"#, addresses, video_data)
+</html>"#, addresses)
 }
 
 /// URL 编码函数
@@ -1417,7 +1484,8 @@ pub fn run() {
         // 注册 Tauri 命令
         // generate_handler! 宏: 生成命令处理器
         .invoke_handler(tauri::generate_handler![
-            scan_videos, 
+            scan_videos,
+            get_shared_videos,
             play_video,
             cancel_scan,
             start_share_server,

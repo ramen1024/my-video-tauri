@@ -5519,7 +5519,7 @@ dependencies = [
 
 [[package]]
 name = "视频扫描器"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "chrono",
  "env_logger",
