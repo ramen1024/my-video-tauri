@@ -241,6 +241,8 @@ fn get_local_ips() -> Vec<String> {
 /// - `Err(String)`: 错误信息
 #[tauri::command]
 fn scan_videos(folder_path: String) -> Result<(), String> {
+    use rayon::prelude::*;
+    
     // Path::new(): 从字符串创建路径对象
     let path = Path::new(&folder_path);
     
@@ -257,88 +259,89 @@ fn scan_videos(folder_path: String) -> Result<(), String> {
         return Err("警告：扫描磁盘根目录可能会花费大量时间并导致程序卡住，请选择一个具体的文件夹".to_string());
     }
 
-    // 支持的视频扩展名数组
-    let video_extensions = [
+    // 支持的视频扩展名数组 - 使用 HashSet 提高查找性能
+    let video_extensions: std::collections::HashSet<&str> = [
         "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-    ];
+    ].iter().cloned().collect();
 
-    // Vec: 动态数组（可变长度列表）
-    let mut videos: Vec<VideoFile> = Vec::new();
-    let base_path = Path::new(&folder_path);
+    let base_path = Path::new(&folder_path).to_path_buf();
 
     // 重置取消标志
     CANCEL_SCAN_FLAG.store(false, Ordering::SeqCst);
     
-    // WalkDir: 递归遍历目录
-    // .follow_links(true): 跟随符号链接
-    // .into_iter(): 转换为迭代器
-    // .filter_map(|e| e.ok()): 过滤掉错误，只保留成功的条目
-    for entry in WalkDir::new(&folder_path)
+    // 第一阶段：收集所有文件路径（单线程，避免并发访问文件系统）
+    let entries: Vec<_> = WalkDir::new(&folder_path)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
-    {
-        // 检查是否被取消
-        if CANCEL_SCAN_FLAG.load(Ordering::SeqCst) {
-            return Err("扫描已取消".to_string());
-        }
-        
-        let path = entry.path();
-        
-        // 只处理文件，跳过目录
-        if path.is_file() {
-            // path.extension(): 获取文件扩展名
-            // Option 类型: Some(ext) 或 None
-            // if let Some(ext) = ...: 模式匹配，仅当有值时执行
-            if let Some(ext) = path.extension() {
-                // to_string_lossy(): 处理非 UTF-8 路径
-                let ext_lower = ext.to_string_lossy().to_lowercase();
-                
-                // 检查是否为视频文件
-                if video_extensions.contains(&ext_lower.as_str()) {
-                    // 获取文件元数据
-                    // Option<Metadata>: 可能获取失败
-                    let metadata: Option<Metadata> = fs::metadata(path).ok();
-                    
-                    // map(): 转换 Option 内部的值
-                    let size = metadata.as_ref().map(|m: &Metadata| m.len()).unwrap_or(0);
-                    
-                    // 过滤小于1MB的文件 (1MB = 1024 * 1024 = 1048576 bytes)
-                    if size < 1_048_576 {
-                        continue;
-                    }
-                    
-                    // and_then(): 链式 Option 操作
-                    let modified = metadata
-                        .and_then(|m: Metadata| m.modified().ok())
-                        .map(format_system_time);
-
-                    // 计算相对路径
-                    // strip_prefix(): 移除路径前缀
-                    let relative_path = path.strip_prefix(base_path)
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                    // 创建 VideoFile 实例
-                    videos.push(VideoFile {
-                        name: path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                        path: path.to_string_lossy().to_string(),
-                        relative_path,
-                        size,
-                        modified,
-                        extension: ext_lower,
-                    });
-                }
+        .filter(|e| e.path().is_file())
+        .collect();
+    
+    // 检查是否被取消
+    if CANCEL_SCAN_FLAG.load(Ordering::SeqCst) {
+        return Err("扫描已取消".to_string());
+    }
+    
+    // 第二阶段：并行处理文件（多线程）
+    let videos: Vec<VideoFile> = entries
+        .into_par_iter()
+        .filter_map(|entry| {
+            // 检查是否被取消（定期检查）
+            if CANCEL_SCAN_FLAG.load(Ordering::SeqCst) {
+                return None;
             }
-        }
+            
+            let path = entry.path();
+            
+            // 获取扩展名
+            let ext_lower = path.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())?;
+            
+            // 检查是否为视频文件
+            if !video_extensions.contains(ext_lower.as_str()) {
+                return None;
+            }
+            
+            // 获取文件元数据
+            let metadata = fs::metadata(path).ok()?;
+            let size = metadata.len();
+            
+            // 过滤小于1MB的文件
+            if size < 1_048_576 {
+                return None;
+            }
+            
+            let modified = metadata.modified()
+                .ok()
+                .map(format_system_time);
+
+            // 计算相对路径
+            let relative_path = path.strip_prefix(&base_path)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+
+            // 创建 VideoFile 实例
+            Some(VideoFile {
+                name: path.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                path: path.to_string_lossy().to_string(),
+                relative_path,
+                size,
+                modified,
+                extension: ext_lower,
+            })
+        })
+        .collect();
+
+    // 检查是否被取消
+    if CANCEL_SCAN_FLAG.load(Ordering::SeqCst) {
+        return Err("扫描已取消".to_string());
     }
 
     // 按文件名排序（忽略大小写）
-    // sort_by(): 自定义排序
-    // cmp(): 比较两个值
+    let mut videos = videos;
     videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     // 更新共享视频列表（单数据源）
