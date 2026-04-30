@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 // std::fs: 文件系统操作模块
 use std::fs;
 use std::fs::File;
-use std::fs::Metadata;
 
 // std::io: 输入输出操作
 // Read: 读取数据的 trait
@@ -21,7 +20,7 @@ use std::fs::Metadata;
 use std::io::{Cursor, Read, Seek, SeekFrom, Take};
 
 // std::path::Path: 路径处理，跨平台兼容
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // std::process::Command: 执行外部命令/程序
 use std::process::Command;
@@ -381,40 +380,16 @@ fn cancel_scan() {
 }
 
 /// 使用系统默认播放器播放视频
-/// 
-/// # 跨平台实现
-/// - Windows: 使用 `cmd /C start` 命令
-/// - macOS: 使用 `open` 命令
-/// - Linux: 使用 `xdg-open` 命令
+///
+/// # 安全改进
+/// 使用 Tauri 的 opener 插件替代手动执行系统命令，避免命令注入风险。
+/// opener 插件会安全地调用操作系统 API 打开文件，不经过 shell 解析。
 #[tauri::command]
 fn play_video(file_path: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        // spawn(): 启动子进程，不等待完成
-        // map_err(): 将错误转换为自定义错误信息
-        Command::new("cmd")
-            .args(["/C", "start", "", &file_path])
-            .spawn()
-            .map_err(|e| format!("无法打开视频: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| format!("无法打开视频: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        Command::new("xdg-open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| format!("无法打开视频: {}", e))?;
-    }
-
-    Ok(())
+    // 使用 opener 插件安全地打开文件
+    // 它会自动根据目标平台调用正确的系统 API，无需手动处理命令参数
+    tauri_plugin_opener::open_path(&file_path, None::<&str>)
+        .map_err(|e| format!("无法打开视频: {}", e))
 }
 
 
@@ -475,7 +450,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                     let url = request.url();
                     
                     // 路由匹配 - 所有响应统一为 Box<dyn Read + Send> 类型
-                    let response: tiny_http::Response<Box<dyn Read + Send>> = match url {
+                    let response: tiny_http::Response<Box<dyn Read + Send>> = 'response: { match url {
                         // 主页
                         "/" | "/index.html" => {
                             // 从共享状态读取视频列表
@@ -547,20 +522,52 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                         }
                         // 视频文件流
                         _ if url.starts_with("/video/") => {
-                            let video_name = url.strip_prefix("/video/").unwrap();
-                            let video_name_decoded = urlencoding_decode(video_name);
-                            
-                            // Windows 路径分隔符转换
-                            let video_name_fixed = video_name_decoded.replace("/", "\\");
-                            
+                            let video_name = url.strip_prefix("/video/").unwrap_or("");
+                            if video_name.is_empty() {
+                                let err_msg = "Invalid video path";
+                                let err_bytes = err_msg.as_bytes().to_vec();
+                                let err_len = err_bytes.len();
+                                let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+                                break 'response tiny_http::Response::new(
+                                    400.into(),
+                                    vec![
+                                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+                                    ],
+                                    cursor,
+                                    Some(err_len),
+                                    None,
+                                );
+                            }
+
                             // 从共享状态获取最新的文件夹路径
                             let folder_path = SHARED_FOLDER_PATH.read()
                                 .map(|p| p.clone())
                                 .unwrap_or_else(|_| folder_path_clone.clone());
-                            let video_path = Path::new(&folder_path).join(&video_name_fixed);
-                            
-                            println!("Video request: {} -> {} -> {}", video_name, video_name_decoded, video_path.display());
-                            
+
+                            // 使用安全路径解析，防止路径遍历攻击
+                            let video_path = match sanitize_video_path(Path::new(&folder_path), video_name) {
+                                Some(path) => path,
+                                None => {
+                                    let err_msg = "Access denied: invalid path";
+                                    let err_bytes = err_msg.as_bytes().to_vec();
+                                    let err_len = err_bytes.len();
+                                    let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+                                    break 'response tiny_http::Response::new(
+                                        403.into(),
+                                        vec![
+                                            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+                                            tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+                                        ],
+                                        cursor,
+                                        Some(err_len),
+                                        None,
+                                    );
+                                }
+                            };
+
+                            println!("Video request: {} -> {}", video_name, video_path.display());
+
                             if video_path.exists() {
                                 let file = File::open(&video_path);
                                 if let Ok(mut file) = file {
@@ -701,7 +708,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 None,
                             )
                         }
-                    };
+                    }};
 
                     // 发送响应
                     request.respond(response).ok();
@@ -720,11 +727,39 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
     })
 }
 
+/// 验证请求路径是否在允许的目录范围内，防止路径遍历攻击
+///
+/// # 安全检查
+/// - 解析并规范化路径（去除 .. 等组件）
+/// - 确保最终路径仍在 base 目录内
+/// - 返回 None 表示路径不合法
+fn sanitize_video_path(base: &Path, requested: &str) -> Option<PathBuf> {
+    // URL 解码
+    let decoded = urlencoding_decode(requested);
+    // 统一使用系统路径分隔符
+    let normalized = decoded.replace('/', std::path::MAIN_SEPARATOR_STR);
+
+    // 构建路径并检查是否包含路径遍历组件
+    let joined = base.join(&normalized);
+
+    // 尝试规范化路径（解析 .. 和 .）
+    let canonical_path = joined.canonicalize().ok()?;
+    let canonical_base = base.canonicalize().ok()?;
+
+    // 确保规范化后的路径仍在 base 目录内
+    if canonical_path.starts_with(&canonical_base) {
+        Some(canonical_path)
+    } else {
+        println!("Path traversal blocked: {:?} is outside {:?}", canonical_path, canonical_base);
+        None
+    }
+}
+
 /// URL 解码函数
-/// 
+///
 /// # 为什么需要自定义实现？
 /// 标准库的 URL 解码可能不支持多字节 UTF-8 字符（如中文）
-/// 
+///
 /// # 实现原理
 /// 1. 遇到 %XX 时，将 XX 解析为十六进制字节
 /// 2. 收集所有字节后，转换为 UTF-8 字符串
