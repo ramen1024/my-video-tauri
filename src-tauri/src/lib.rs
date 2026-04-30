@@ -3,7 +3,8 @@ use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom, Take};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 
 use walkdir::WalkDir;
 
@@ -58,12 +59,17 @@ fn scan_videos(folder_path: String) -> Result<(), AppError> {
         ));
     }
 
-    let video_extensions: std::collections::HashSet<&str> = [
-        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-    ]
-    .iter()
-    .cloned()
-    .collect();
+    use std::collections::HashSet;
+    use once_cell::sync::Lazy;
+
+    static VIDEO_EXTENSIONS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+        [
+            "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
+        ]
+        .iter()
+        .cloned()
+        .collect()
+    });
 
     let base_path = Path::new(&folder_path).to_path_buf();
 
@@ -94,7 +100,7 @@ fn scan_videos(folder_path: String) -> Result<(), AppError> {
                 .and_then(|e| e.to_str())
                 .map(|e| e.to_lowercase())?;
 
-            if !video_extensions.contains(ext_lower.as_str()) {
+            if !VIDEO_EXTENSIONS.contains(ext_lower.as_str()) {
                 return None;
             }
 
@@ -131,15 +137,18 @@ fn scan_videos(folder_path: String) -> Result<(), AppError> {
     }
 
     let mut videos = videos;
-    videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    videos.sort_by(|a, b| {
+        a.name
+            .chars()
+            .flat_map(|c| c.to_lowercase())
+            .cmp(b.name.chars().flat_map(|c| c.to_lowercase()))
+    });
 
-    if let Ok(mut shared) = SHARED_VIDEOS.write() {
-        *shared = videos;
-    }
+    let mut shared = SHARED_VIDEOS.write();
+    *shared = videos;
 
-    if let Ok(mut shared_path) = SHARED_FOLDER_PATH.write() {
-        *shared_path = folder_path;
-    }
+    let mut shared_path = SHARED_FOLDER_PATH.write();
+    *shared_path = folder_path;
 
     Ok(())
 }
@@ -147,10 +156,7 @@ fn scan_videos(folder_path: String) -> Result<(), AppError> {
 /// 获取共享视频列表
 #[tauri::command]
 fn get_shared_videos() -> Result<Vec<VideoFile>, AppError> {
-    SHARED_VIDEOS
-        .read()
-        .map(|videos| videos.clone())
-        .map_err(|_| AppError::IoError("无法读取视频列表".to_string()))
+    Ok(SHARED_VIDEOS.read().clone())
 }
 
 /// 取消正在进行的扫描操作
@@ -186,7 +192,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
     let ips = get_local_ips();
 
     let ips_clone = ips.clone();
-    let folder_path_clone = folder_path.clone();
+    let _folder_path_clone = folder_path.clone();
 
     SERVER_RUNNING.store(true, Ordering::SeqCst);
 
@@ -207,10 +213,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                     let response: tiny_http::Response<Box<dyn Read + Send>> = 'response: {
                         match url {
                             "/" | "/index.html" => {
-                                let videos = SHARED_VIDEOS
-                                    .read()
-                                    .map(|v| v.clone())
-                                    .unwrap_or_default();
+                                let videos = SHARED_VIDEOS.read().clone();
                                 let html = generate_html(&videos, &ips_clone, port);
                                 let html_bytes = html.into_bytes();
                                 let html_len = html_bytes.len();
@@ -236,10 +239,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 );
                             }
                             "/videos" => {
-                                let videos = SHARED_VIDEOS
-                                    .read()
-                                    .map(|v| v.clone())
-                                    .unwrap_or_default();
+                                let videos = SHARED_VIDEOS.read().clone();
                                 let json = serde_json::to_string(&videos).unwrap();
                                 let json_bytes = json.into_bytes();
                                 let json_len = json_bytes.len();
@@ -275,10 +275,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 );
                             }
                             "/refresh" => {
-                                let folder_path = SHARED_FOLDER_PATH
-                                    .read()
-                                    .map(|p| p.clone())
-                                    .unwrap_or_default();
+                                let folder_path = SHARED_FOLDER_PATH.read().clone();
                                 let result = if !folder_path.is_empty() {
                                     match scan_videos(folder_path) {
                                         Ok(_) => {
@@ -348,10 +345,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                     );
                                 }
 
-                                let folder_path = SHARED_FOLDER_PATH
-                                    .read()
-                                    .map(|p| p.clone())
-                                    .unwrap_or_else(|_| folder_path_clone.clone());
+                                let folder_path = SHARED_FOLDER_PATH.read().clone();
 
                                 let video_path = match sanitize_video_path(
                                     Path::new(&folder_path),
