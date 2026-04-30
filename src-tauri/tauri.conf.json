@@ -3,6 +3,7 @@
   "productName": "视频扫描器",
   "version": "0.2.9",
   "identifier": "com.myvideo.scanner",
+  "mainBinaryName": "视频扫描器_0.2.9_x64",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
