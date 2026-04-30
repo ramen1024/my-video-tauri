@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频扫描器</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+
+        body {{
+            font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f172a;
+            min-height: 100vh;
+            padding: 24px;
+            color: #ffffff;
+            position: relative;
+        }}
+
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }}
+
+        .header {{
+            text-align: center;
+            margin-bottom: 24px;
+            padding: 32px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }}
+
+        .header h1 {{
+            font-size: 2.2em;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: 0.5px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }}
+
+        .header .subtitle {{
+            font-size: 1em;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 0.5px;
+        }}
+
+        .addresses {{
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 12px 24px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            display: inline-block;
+            margin-top: 16px;
+            font-size: 13px;
+        }}
+
+        .address-item {{
+            color: #60a5fa;
+            font-weight: 500;
+        }}
+
+        .toolbar {{
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }}
+
+        .search-box {{
+            flex: 1;
+            min-width: 200px;
+            max-width: 300px;
+            position: relative;
+        }}
+
+        .search-box input {{
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            transition: all 0.3s ease;
+        }}
+
+        .search-box input:focus {{
+            outline: none;
+            border-color: rgba(96, 165, 250, 0.5);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+        }}
+
+        .search-box input::placeholder {{
+            color: rgba(255, 255, 255, 0.4);
+        }}
+
+        .sort-buttons {{
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }}
+
+        .sort-btn {{
+            padding: 10px 18px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }}
+
+        .sort-btn:hover {{
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(96, 165, 250, 0.4);
+            color: #60a5fa;
+        }}
+
+        .sort-btn.active {{
+            background: rgba(96, 165, 250, 0.25);
+            border-color: rgba(96, 165, 250, 0.5);
+            color: #60a5fa;
+        }}
+
+        .stats {{
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }}
+
+        .stat-item {{
+            text-align: center;
+        }}
+
+        .stat-value {{
+            font-size: 2em;
+            font-weight: 600;
+            color: #60a5fa;
+        }}
+
+        .stat-label {{
+            font-size: 0.85em;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 4px;
+            font-weight: 500;
+        }}
+
+        .video-list {{
+            background: rgba(255, 255, 255, 0.04);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }}
+
+        .video-item {{
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }}
+
+        .video-item:hover {{
+            background: rgba(255, 255, 255, 0.06);
+        }}
+
+        .video-item:last-child {{
+            border-bottom: none;
+        }}
+
+        .video-icon {{
+            width: 44px;
+            height: 44px;
+            background: rgba(96, 165, 250, 0.2);
+            border: 1px solid rgba(96, 165, 250, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+            font-size: 18px;
+            color: #60a5fa;
+            transition: all 0.3s ease;
+        }}
+
+        .video-item:hover .video-icon {{
+            background: rgba(96, 165, 250, 0.35);
+            transform: scale(1.1);
+        }}
+
+        .video-info {{
+            flex: 1;
+            min-width: 0;
+        }}
+
+        .video-name {{
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.95);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        .video-meta {{
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+        }}
+
+        .video-meta span {{
+            margin-right: 15px;
+        }}
+
+        .video-ext {{
+            background: rgba(96, 165, 250, 0.15);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #60a5fa;
+            text-transform: uppercase;
+            margin-left: 15px;
+        }}
+
+        .video-size {{
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            margin-left: 15px;
+            text-align: right;
+            min-width: 70px;
+        }}
+
+        .empty {{
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }}
+
+        .empty-icon {{
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }}
+
+        .player-overlay {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }}
+
+        .player-container {{
+            width: 90%;
+            max-width: 1000px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }}
+
+        .player-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+
+        .player-title {{
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+            margin-right: 16px;
+        }}
+
+        .close-btn {{
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #ffffff;
+            cursor: pointer;
+            padding: 10px 16px;
+            font-size: 16px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }}
+
+        .close-btn:hover {{
+            background: rgba(239, 68, 68, 0.3);
+            border-color: rgba(239, 68, 68, 0.5);
+        }}
+
+        .video-player {{
+            width: 100%;
+            display: block;
+            max-height: 75vh;
+            background: #000;
+        }}
+
+        ::-webkit-scrollbar {{
+            width: 8px;
+            height: 8px;
+        }}
+
+        ::-webkit-scrollbar-track {{
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 4px;
+        }}
+
+        ::-webkit-scrollbar-thumb {{
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }}
+
+        ::-webkit-scrollbar-thumb:hover {{
+            background: rgba(255, 255, 255, 0.25);
+        }}
+
+        @media (max-width: 600px) {{
+            .video-item {{
+                grid-template-columns: auto 1fr auto;
+            }}
+            .video-ext {{
+                display: none;
+            }}
+            .toolbar {{
+                flex-direction: column;
+            }}
+            .search-box {{
+                max-width: 100%;
+            }}
+            .player-container {{
+                width: 100%;
+                clip-path: none;
+            }}
+            .header h1 {{
+                font-size: 1.8em;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📹 视频扫描器</h1>
+            <div class="subtitle">局域网视频共享服务</div>
+            <div class="addresses">{addresses}</div>
+        </div>
+
+        <div class="toolbar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="🔍 搜索视频..." oninput="filterVideos()">
+            </div>
+            <div class="sort-buttons">
+                <button class="sort-btn active" onclick="sortVideos('name', 'asc')">名称 ↑</button>
+                <button class="sort-btn" onclick="sortVideos('name', 'desc')">名称 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('size', 'desc')">大小 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('size', 'asc')">大小 ↑</button>
+                <button class="sort-btn" onclick="sortVideos('modified', 'desc')">时间 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('modified', 'asc')">时间 ↑</button>
+                <button class="sort-btn" onclick="refreshVideos()" id="refreshBtn" title="刷新列表">🔄 刷新</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-item">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label">视频数量</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="totalSize">0 B</div>
+                <div class="stat-label">总大小</div>
+            </div>
+        </div>
+
+        <div class="video-list" id="videoList"></div>
+
+        <div class="player-overlay" id="playerOverlay" onclick="closePlayer(event)">
+            <div class="player-container" onclick="event.stopPropagation()">
+                <div class="player-header">
+                    <span class="player-title" id="playerTitle"></span>
+                    <button class="close-btn" onclick="closePlayer()">&#10005;</button>
+                </div>
+                <video id="videoPlayer" controls autoplay class="video-player">
+                    您的浏览器不支持视频播放
+                </video>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let videos = [];
+        let currentSort = {{ field: 'name', order: 'asc' }};
+        let searchTerm = '';
+        let isRefreshing = false;
+
+        async function fetchVideos() {{
+            try {{
+                const response = await fetch('/videos', {{
+                    cache: 'no-cache',
+                    headers: {{ 'Cache-Control': 'no-cache' }}
+                }});
+                if (response.ok) {{
+                    const data = await response.json();
+                    videos = data;
+                    renderVideos();
+                }} else {{
+                    console.error('获取视频列表失败:', response.status);
+                }}
+            }} catch (error) {{
+                console.error('获取视频列表出错:', error);
+            }}
+        }}
+
+        async function refreshVideos() {{
+            if (isRefreshing) return;
+            isRefreshing = true;
+
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.textContent = '⏳ 刷新中...';
+            refreshBtn.disabled = true;
+
+            try {{
+                const response = await fetch('/refresh', {{
+                    method: 'POST',
+                    cache: 'no-cache'
+                }});
+
+                if (response.ok) {{
+                    const result = await response.json();
+                    console.log('刷新结果:', result.message);
+                    await fetchVideos();
+                }} else {{
+                    console.error('刷新失败:', response.status);
+                    alert('刷新失败，请重试');
+                }}
+            }} catch (error) {{
+                console.error('刷新出错:', error);
+                alert('刷新出错: ' + error.message);
+            }} finally {{
+                isRefreshing = false;
+                refreshBtn.textContent = '🔄 刷新';
+                refreshBtn.disabled = false;
+            }}
+        }}
+
+        function formatSize(bytes) {{
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }}
+
+        function getExtIcon(ext) {{
+            const icons = {{
+                'mp4': '🎬', 'mkv': '🎬', 'avi': '🎬', 'mov': '🎬',
+                'wmv': '🎬', 'flv': '🎬', 'webm': '🎬', 'm4v': '🎬',
+                'mpg': '🎬', 'mpeg': '🎬'
+            }};
+            return icons[ext] || '📹';
+        }}
+
+        function openPlayer(url, name) {{
+            document.getElementById('playerTitle').textContent = name;
+            document.getElementById('videoPlayer').src = url;
+            document.getElementById('playerOverlay').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }}
+
+        function closePlayer(event) {{
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('playerOverlay').style.display = 'none';
+            document.getElementById('videoPlayer').pause();
+            document.getElementById('videoPlayer').src = '';
+            document.body.style.overflow = '';
+        }}
+
+        function renderVideos() {{
+            let filtered = videos.filter(v =>
+                v.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            filtered.sort((a, b) => {{
+                let valA, valB;
+                if (currentSort.field === 'name') {{
+                    valA = a.name.toLowerCase();
+                    valB = b.name.toLowerCase();
+                }} else if (currentSort.field === 'size') {{
+                    valA = a.size;
+                    valB = b.size;
+                }} else {{
+                    valA = a.modified || '';
+                    valB = b.modified || '';
+                }}
+
+                if (valA < valB) return currentSort.order === 'asc' ? -1 : 1;
+                if (valA > valB) return currentSort.order === 'asc' ? 1 : -1;
+                return 0;
+            }});
+
+            const list = document.getElementById('videoList');
+
+            if (filtered.length === 0) {{
+                list.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>没有找到视频</div></div>';
+                return;
+            }}
+
+            list.innerHTML = filtered.map(v => `
+                <div class="video-item" onclick="openPlayer('/video/${{encodeURIComponent(v.relative_path)}}', '${{v.name.replace(/'/g, "\\\\'")}}')">
+                    <div class="video-icon">${{getExtIcon(v.extension)}}</div>
+                    <div class="video-info">
+                        <div class="video-name">${{v.name}}</div>
+                        <div class="video-meta">
+                            <span>📅 ${{v.modified || '未知'}}</span>
+                        </div>
+                    </div>
+                    <div class="video-ext">${{v.extension}}</div>
+                    <div class="video-size">${{formatSize(v.size)}}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('totalCount').textContent = filtered.length;
+            const totalBytes = filtered.reduce((sum, v) => sum + v.size, 0);
+            document.getElementById('totalSize').textContent = formatSize(totalBytes);
+        }}
+
+        function sortVideos(field, order) {{
+            currentSort = {{ field, order }};
+            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderVideos();
+        }}
+
+        function filterVideos() {{
+            searchTerm = document.getElementById('searchInput').value;
+            renderVideos();
+        }}
+
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Escape') closePlayer();
+        }});
+
+        document.addEventListener('DOMContentLoaded', function() {{
+            fetchVideos();
+            setInterval(fetchVideos, 30000);
+        }});
+    </script>
+</body>
+</html>
