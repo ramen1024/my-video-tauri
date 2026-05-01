@@ -1,7 +1,7 @@
-use bcrypt::{hash, verify, DEFAULT_COST};
 use parking_lot::RwLock;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -20,6 +20,7 @@ static FAILED_ATTEMPTS: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, FailedA
 const SESSION_DURATION_SECS: i64 = 3600;
 const MAX_FAILED_ATTEMPTS: u32 = 3;
 const LOCK_DURATION_SECS: i64 = 30;
+const HASH_ITERATIONS: u32 = 10000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordStatus {
@@ -98,10 +99,49 @@ pub fn get_password_status() -> PasswordStatus {
 
 pub fn generate_random_password() -> String {
     let mut rng = rand::thread_rng();
-    format!(
-        "{:04}",
-        rng.gen_range(0..10000)
-    )
+    format!("{:04}", rng.gen_range(0..10000))
+}
+
+fn generate_salt() -> String {
+    let mut rng = rand::thread_rng();
+    (0..16)
+        .map(|_| format!("{:02x}", rng.gen::<u8>()))
+        .collect()
+}
+
+fn hash_password(password: &str, salt: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(format!("{}{}", salt, password).as_bytes());
+    let mut result = hasher.finalize();
+
+    for _ in 1..HASH_ITERATIONS {
+        let mut hasher = Sha256::new();
+        hasher.update(&result);
+        result = hasher.finalize();
+    }
+
+    format!("{}${}", salt, hex::encode(result))
+}
+
+fn verify_hash(password: &str, stored_hash: &str) -> bool {
+    let parts: Vec<&str> = stored_hash.splitn(2, '$').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+    let salt = parts[0];
+    let computed = hash_password(password, salt);
+    constant_time_eq(&computed, stored_hash)
+}
+
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut result = 0u8;
+    for (x, y) in a.bytes().zip(b.bytes()) {
+        result |= x ^ y;
+    }
+    result == 0
 }
 
 pub fn set_password(password: &str) -> Result<(), String> {
@@ -112,7 +152,8 @@ pub fn set_password(password: &str) -> Result<(), String> {
         return Err("密码只能包含数字0-9".to_string());
     }
 
-    let hashed = hash(password, DEFAULT_COST).map_err(|e| format!("密码加密失败: {}", e))?;
+    let salt = generate_salt();
+    let hashed = hash_password(password, &salt);
     {
         let mut stored = PASSWORD_HASH.write();
         *stored = Some(hashed);
@@ -124,7 +165,7 @@ pub fn set_password(password: &str) -> Result<(), String> {
 pub fn verify_password(password: &str) -> Result<bool, String> {
     let stored = PASSWORD_HASH.read();
     match stored.as_ref() {
-        Some(hashed) => verify(password, hashed).map_err(|e| format!("密码验证失败: {}", e)),
+        Some(hashed) => Ok(verify_hash(password, hashed)),
         None => Err("未设置密码".to_string()),
     }
 }
