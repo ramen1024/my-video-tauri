@@ -162,7 +162,7 @@
         }
 
         .stat-value {
-            font-size: 2em;
+            font-size: 1.6em;
             font-weight: 600;
             color: #60a5fa;
         }
@@ -188,14 +188,31 @@
             display: grid;
             grid-template-columns: auto 1fr auto auto;
             align-items: center;
-            padding: 16px 20px;
+            padding: 14px 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             transition: all 0.2s ease;
             cursor: pointer;
+            position: relative;
+        }
+
+        .video-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #60a5fa;
+            opacity: 0;
+            transition: opacity 0.2s ease;
         }
 
         .video-item:hover {
             background: rgba(255, 255, 255, 0.06);
+        }
+
+        .video-item:hover::before {
+            opacity: 1;
         }
 
         .video-item:last-child {
