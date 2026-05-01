@@ -27,7 +27,12 @@ static SHARED_VIDEOS: once_cell::sync::Lazy<Arc<RwLock<Vec<VideoFile>>>> =
 static SHARED_FOLDER_PATH: once_cell::sync::Lazy<Arc<RwLock<String>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(String::new())));
 
+static LOGIN_PAGE: &str = include_str!("login_template.html");
+
 static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
+
+static SERVER_HANDLE: once_cell::sync::Lazy<Arc<RwLock<Option<Arc<tiny_http::Server>>>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(None)));
 
 #[tauri::command]
 fn scan_videos(folder_path: String) -> Result<(), AppError> {
@@ -222,11 +227,22 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
 
         match tiny_http::Server::http(&addr) {
             Ok(server) => {
+                let server = Arc::new(server);
+                {
+                    let mut handle = SERVER_HANDLE.write();
+                    *handle = Some(server.clone());
+                }
                 println!("Share server started at http://{:?}:{}", ips_clone, port);
 
+                let mut request_count: u64 = 0;
                 for mut request in server.incoming_requests() {
                     if !SERVER_RUNNING.load(Ordering::SeqCst) {
                         break;
+                    }
+
+                    request_count += 1;
+                    if request_count % 100 == 0 {
+                        password::cleanup_expired_sessions();
                     }
 
                     let url = request.url().to_string();
@@ -248,7 +264,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
 
                         if !password::check_web_auth(cookie_header) {
                             if url == "/login" || url == "/login.html" {
-                                let html = include_str!("login_template.html").to_string();
+                                let html = LOGIN_PAGE.to_string();
                                 let html_bytes = html.into_bytes();
                                 let html_len = html_bytes.len();
                                 let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(html_bytes));
@@ -506,10 +522,9 @@ fn handle_auth_request(request: &mut tiny_http::Request) -> tiny_http::Response<
                         vec![
                             tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
                             tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
-                            tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
                             tiny_http::Header::from_bytes(
                                 &b"Set-Cookie"[..],
-                                format!("session_token={}; Path=/; Max-Age=3600; HttpOnly", token).as_bytes(),
+                                format!("session_token={}; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", token).as_bytes(),
                             ).unwrap(),
                         ],
                         cursor,
@@ -551,6 +566,12 @@ fn make_json_response(status_code: u16, json: &str) -> tiny_http::Response<Box<d
 #[tauri::command]
 fn stop_share_server() -> Result<(), AppError> {
     SERVER_RUNNING.store(false, Ordering::SeqCst);
+    {
+        let mut handle = SERVER_HANDLE.write();
+        if let Some(server) = handle.take() {
+            server.unblock();
+        }
+    }
     Ok(())
 }
 
@@ -572,6 +593,8 @@ fn generate_html(_videos: &[VideoFile], ips: &[String], port: u16) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    password::load_password_config();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

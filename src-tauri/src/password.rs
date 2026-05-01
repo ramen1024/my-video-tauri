@@ -27,6 +27,12 @@ pub struct PasswordStatus {
     pub has_password: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PasswordConfig {
+    password_hash: Option<String>,
+    enabled: bool,
+}
+
 #[derive(Debug, Clone)]
 struct FailedAttempt {
     count: u32,
@@ -37,12 +43,46 @@ fn current_timestamp() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
+fn config_path() -> std::path::PathBuf {
+    let mut path = std::env::current_exe().unwrap_or_default();
+    path.pop();
+    path.join("password_config.json")
+}
+
+pub fn load_password_config() {
+    let path = config_path();
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(config) = serde_json::from_str::<PasswordConfig>(&content) {
+            if let Some(hash) = config.password_hash {
+                let mut stored = PASSWORD_HASH.write();
+                *stored = Some(hash);
+            }
+            PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
+            println!("[密码配置] 已从文件加载 - 启用状态: {}", config.enabled);
+        }
+    }
+}
+
+fn save_password_config() {
+    let config = PasswordConfig {
+        password_hash: PASSWORD_HASH.read().clone(),
+        enabled: PASSWORD_ENABLED.load(Ordering::SeqCst),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&config) {
+        let path = config_path();
+        if let Err(e) = std::fs::write(&path, json) {
+            println!("[密码配置] 保存失败: {}", e);
+        }
+    }
+}
+
 pub fn is_password_enabled() -> bool {
     PASSWORD_ENABLED.load(Ordering::SeqCst)
 }
 
 pub fn set_password_enabled(enabled: bool) {
     PASSWORD_ENABLED.store(enabled, Ordering::SeqCst);
+    save_password_config();
 }
 
 pub fn has_password_set() -> bool {
@@ -73,8 +113,11 @@ pub fn set_password(password: &str) -> Result<(), String> {
     }
 
     let hashed = hash(password, DEFAULT_COST).map_err(|e| format!("密码加密失败: {}", e))?;
-    let mut stored = PASSWORD_HASH.write();
-    *stored = Some(hashed);
+    {
+        let mut stored = PASSWORD_HASH.write();
+        *stored = Some(hashed);
+    }
+    save_password_config();
     Ok(())
 }
 
@@ -87,11 +130,14 @@ pub fn verify_password(password: &str) -> Result<bool, String> {
 }
 
 pub fn reset_password() {
-    let mut stored = PASSWORD_HASH.write();
-    *stored = None;
-    let mut sessions = SESSIONS.write();
-    sessions.clear();
-    PASSWORD_ENABLED.store(false, Ordering::SeqCst);
+    {
+        let mut stored = PASSWORD_HASH.write();
+        *stored = None;
+        let mut sessions = SESSIONS.write();
+        sessions.clear();
+        PASSWORD_ENABLED.store(false, Ordering::SeqCst);
+    }
+    save_password_config();
 }
 
 pub fn create_session() -> String {
@@ -121,7 +167,6 @@ pub fn validate_session(token: &str) -> bool {
     false
 }
 
-#[allow(dead_code)]
 pub fn cleanup_expired_sessions() {
     let now = current_timestamp();
     let mut sessions = SESSIONS.write();

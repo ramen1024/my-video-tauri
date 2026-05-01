@@ -30,8 +30,9 @@
   let passwordErrorMsg = $state("");
   let isPasswordSubmitting = $state(false);
   let generatedPassword = $state("");
+  let showResetConfirm = $state(false);
 
-  const supportedExtensions = ["mp4", "webm", "ogg", "mp4", "m4v"];
+  const supportedExtensions = ["mp4", "webm", "ogg", "m4v"];
   const defaultSharePort = 6008;
 
   function generateQRCode(ip, port) {
@@ -388,6 +389,11 @@
   }
 
   async function resetPasswordAction() {
+    showResetConfirm = true;
+  }
+
+  async function confirmResetPassword() {
+    showResetConfirm = false;
     try {
       await invoke("reset_password");
       passwordEnabled = false;
@@ -398,16 +404,33 @@
     }
   }
 
+  function cancelResetPassword() {
+    showResetConfirm = false;
+  }
+
   $effect(() => {
     loadPasswordStatus();
   });
 
-  let currentPinDisplay = $derived(() => {
-    if (pinStep === 1 && passwordModalMode === "change") return oldPinInput;
-    if (pinStep === 1) return pinInput;
-    return pinConfirm;
-  });
+  let currentPinDisplay = $derived(
+    pinStep === 1 && passwordModalMode === "change" ? oldPinInput
+      : pinStep === 1 ? pinInput
+      : pinConfirm
+  );
+
+  function handlePasswordKeydown(e) {
+    if (!showPasswordModal) return;
+    if (e.key >= '0' && e.key <= '9') {
+      handleNumpadInput(e.key);
+    } else if (e.key === 'Backspace') {
+      handleNumpadDelete();
+    } else if (e.key === 'Escape') {
+      closePasswordModal();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handlePasswordKeydown} />
 
 <main class="app">
   {#if currentVideo}
@@ -472,12 +495,14 @@
 
           <div class="pin-display">
             {#each Array(4) as _, i}
-              <div class="pin-dot" class:filled={i < currentPinDisplay().length}></div>
+              <div class="pin-dot" class:filled={i < currentPinDisplay.length}></div>
             {/each}
           </div>
 
           {#if passwordErrorMsg}
             <div class="pin-error">{passwordErrorMsg}</div>
+          {:else if isPasswordSubmitting}
+            <div class="pin-loading">验证中...</div>
           {/if}
 
           {#if generatedPassword && pinStep === 1}
@@ -517,7 +542,15 @@
 
           {#if passwordModalMode === "change" && pinStep !== 1}
             <div class="modal-actions">
-              <button class="btn btn-danger" onclick={resetPasswordAction}>重置密码</button>
+              {#if showResetConfirm}
+                <div class="reset-confirm">
+                  <span class="reset-confirm-text">确认重置密码？</span>
+                  <button class="btn btn-sm btn-danger" onclick={confirmResetPassword}>确认</button>
+                  <button class="btn btn-sm" onclick={cancelResetPassword}>取消</button>
+                </div>
+              {:else}
+                <button class="btn btn-danger" onclick={resetPasswordAction}>重置密码</button>
+              {/if}
             </div>
           {/if}
         </div>
@@ -1597,6 +1630,14 @@
     min-height: 20px;
   }
 
+  .pin-loading {
+    text-align: center;
+    color: #60a5fa;
+    font-size: 13px;
+    margin-bottom: 12px;
+    min-height: 20px;
+  }
+
   .generated-pwd-box {
     display: flex;
     align-items: center;
@@ -1703,5 +1744,23 @@
   .modal-actions .btn {
     font-size: 12px;
     padding: 8px 16px;
+  }
+
+  .reset-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    width: 100%;
+  }
+
+  .reset-confirm-text {
+    color: #fca5a5;
+    font-size: 13px;
+    font-weight: 500;
   }
 </style>

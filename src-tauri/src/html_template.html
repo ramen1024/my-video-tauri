@@ -473,7 +473,6 @@
 
             try {
                 const response = await fetch('/refresh', {
-                    method: 'POST',
                     cache: 'no-cache'
                 });
 
@@ -527,6 +526,12 @@
             document.body.style.overflow = '';
         }
 
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         function renderVideos() {
             let filtered = videos.filter(v =>
                 v.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -558,15 +563,15 @@
             }
 
             list.innerHTML = filtered.map(v => `
-                <div class="video-item" onclick="openPlayer('/video/${encodeURIComponent(v.relative_path)}', '${v.name.replace(/'/g, "\\\\'")}')">
+                <div class="video-item" onclick="openPlayer('/video/${encodeURIComponent(v.relative_path)}', '${escapeHtml(v.name.replace(/'/g, "\\\\'"))}')">
                     <div class="video-icon">${getExtIcon(v.extension)}</div>
                     <div class="video-info">
-                        <div class="video-name">${v.name}</div>
+                        <div class="video-name">${escapeHtml(v.name)}</div>
                         <div class="video-meta">
-                            <span>📅 ${v.modified || '未知'}</span>
+                            <span>📅 ${escapeHtml(v.modified || '未知')}</span>
                         </div>
                     </div>
-                    <div class="video-ext">${v.extension}</div>
+                    <div class="video-ext">${escapeHtml(v.extension)}</div>
                     <div class="video-size">${formatSize(v.size)}</div>
                 </div>
             `).join('');
