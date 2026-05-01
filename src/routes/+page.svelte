@@ -19,6 +19,18 @@
   let selectedIp = $state("");
   let searchTerm = $state("");
 
+  let passwordEnabled = $state(false);
+  let hasPassword = $state(false);
+  let showPasswordModal = $state(false);
+  let passwordModalMode = $state("set");
+  let pinInput = $state("");
+  let pinConfirm = $state("");
+  let oldPinInput = $state("");
+  let pinStep = $state(1);
+  let passwordErrorMsg = $state("");
+  let isPasswordSubmitting = $state(false);
+  let generatedPassword = $state("");
+
   const supportedExtensions = ["mp4", "webm", "ogg", "mp4", "m4v"];
   const defaultSharePort = 6008;
 
@@ -120,9 +132,7 @@
     videos = [];
 
     try {
-      // 1. 扫描文件夹（更新单数据源）
       await invoke("scan_videos", { folderPath: currentFolder });
-      // 2. 从单数据源获取视频列表
       videos = await invoke("get_shared_videos");
     } catch (e) {
       if (e === "扫描已取消") {
@@ -194,6 +204,209 @@
       errorMsg = "停止共享失败: " + e;
     }
   }
+
+  async function loadPasswordStatus() {
+    try {
+      const status = await invoke("get_password_status");
+      passwordEnabled = status.enabled;
+      hasPassword = status.has_password;
+    } catch (e) {
+      console.error("获取密码状态失败:", e);
+    }
+  }
+
+  async function togglePasswordProtection() {
+    if (!passwordEnabled && !hasPassword) {
+      openPasswordModal("set");
+      return;
+    }
+    try {
+      await invoke("set_password_enabled", { enabled: !passwordEnabled });
+      passwordEnabled = !passwordEnabled;
+    } catch (e) {
+      errorMsg = "切换密码保护失败: " + e;
+    }
+  }
+
+  function openPasswordModal(mode) {
+    passwordModalMode = mode;
+    pinInput = "";
+    pinConfirm = "";
+    oldPinInput = "";
+    pinStep = 1;
+    passwordErrorMsg = "";
+    generatedPassword = "";
+    showPasswordModal = true;
+  }
+
+  function closePasswordModal() {
+    showPasswordModal = false;
+    pinInput = "";
+    pinConfirm = "";
+    oldPinInput = "";
+    pinStep = 1;
+    passwordErrorMsg = "";
+    generatedPassword = "";
+  }
+
+  function handleNumpadInput(digit) {
+    if (isPasswordSubmitting) return;
+    passwordErrorMsg = "";
+
+    if (pinStep === 1 && passwordModalMode === "change") {
+      if (oldPinInput.length < 4) {
+        oldPinInput += digit;
+      }
+    } else if (pinStep === 1) {
+      if (pinInput.length < 4) {
+        pinInput += digit;
+      }
+      if (pinInput.length === 4) {
+        if (passwordModalMode === "set" || passwordModalMode === "change") {
+          pinStep = 2;
+        } else if (passwordModalMode === "verify") {
+          submitPasswordVerify();
+        }
+      }
+    } else if (pinStep === 2) {
+      if (pinConfirm.length < 4) {
+        pinConfirm += digit;
+      }
+      if (pinConfirm.length === 4) {
+        submitPasswordSet();
+      }
+    }
+  }
+
+  function handleNumpadDelete() {
+    if (isPasswordSubmitting) return;
+    passwordErrorMsg = "";
+
+    if (pinStep === 1 && passwordModalMode === "change") {
+      oldPinInput = oldPinInput.slice(0, -1);
+    } else if (pinStep === 1) {
+      pinInput = pinInput.slice(0, -1);
+    } else if (pinStep === 2) {
+      pinConfirm = pinConfirm.slice(0, -1);
+    }
+  }
+
+  function handleNumpadClear() {
+    if (isPasswordSubmitting) return;
+    passwordErrorMsg = "";
+
+    if (pinStep === 1 && passwordModalMode === "change") {
+      oldPinInput = "";
+    } else if (pinStep === 1) {
+      pinInput = "";
+    } else if (pinStep === 2) {
+      pinConfirm = "";
+    }
+  }
+
+  async function submitPasswordVerify() {
+    isPasswordSubmitting = true;
+    try {
+      const result = await invoke("verify_password_cmd", { password: pinInput });
+      if (result) {
+        closePasswordModal();
+      } else {
+        passwordErrorMsg = "密码错误";
+        pinInput = "";
+        pinStep = 1;
+      }
+    } catch (e) {
+      passwordErrorMsg = "验证失败: " + e;
+      pinInput = "";
+    } finally {
+      isPasswordSubmitting = false;
+    }
+  }
+
+  async function submitPasswordSet() {
+    if (pinInput !== pinConfirm) {
+      passwordErrorMsg = "两次输入的密码不一致，请重新输入";
+      pinInput = "";
+      pinConfirm = "";
+      pinStep = 1;
+      return;
+    }
+
+    isPasswordSubmitting = true;
+    try {
+      await invoke("set_password", { password: pinInput });
+      hasPassword = true;
+      if (!passwordEnabled) {
+        await invoke("set_password_enabled", { enabled: true });
+        passwordEnabled = true;
+      }
+      closePasswordModal();
+    } catch (e) {
+      passwordErrorMsg = "设置密码失败: " + e;
+      pinInput = "";
+      pinConfirm = "";
+      pinStep = 1;
+    } finally {
+      isPasswordSubmitting = false;
+    }
+  }
+
+  async function submitOldPassword() {
+    if (oldPinInput.length !== 4) return;
+    isPasswordSubmitting = true;
+    try {
+      const result = await invoke("verify_password_cmd", { password: oldPinInput });
+      if (result) {
+        pinStep = 2;
+        passwordErrorMsg = "";
+      } else {
+        passwordErrorMsg = "原密码错误";
+        oldPinInput = "";
+      }
+    } catch (e) {
+      passwordErrorMsg = "验证失败: " + e;
+      oldPinInput = "";
+    } finally {
+      isPasswordSubmitting = false;
+    }
+  }
+
+  async function generateRandomPwd() {
+    try {
+      generatedPassword = await invoke("generate_random_password");
+    } catch (e) {
+      passwordErrorMsg = "生成密码失败: " + e;
+    }
+  }
+
+  async function useGeneratedPassword() {
+    if (!generatedPassword) return;
+    pinInput = generatedPassword;
+    pinConfirm = "";
+    pinStep = 2;
+    passwordErrorMsg = "";
+  }
+
+  async function resetPasswordAction() {
+    try {
+      await invoke("reset_password");
+      passwordEnabled = false;
+      hasPassword = false;
+      closePasswordModal();
+    } catch (e) {
+      passwordErrorMsg = "重置密码失败: " + e;
+    }
+  }
+
+  $effect(() => {
+    loadPasswordStatus();
+  });
+
+  let currentPinDisplay = $derived(() => {
+    if (pinStep === 1 && passwordModalMode === "change") return oldPinInput;
+    if (pinStep === 1) return pinInput;
+    return pinConfirm;
+  });
 </script>
 
 <main class="app">
@@ -225,6 +438,89 @@
         >
           您的浏览器不支持视频播放
         </video>
+      </div>
+    </div>
+  {/if}
+
+  {#if showPasswordModal}
+    <div class="modal-overlay" onclick={closePasswordModal}>
+      <div class="modal-container" onclick={(e) => e.stopPropagation()}>
+        <div class="modal-header">
+          <span class="modal-title">
+            {#if passwordModalMode === "set"}
+              设置密码
+            {:else if passwordModalMode === "change"}
+              修改密码
+            {:else}
+              验证密码
+            {/if}
+          </span>
+          <button class="close-btn" onclick={closePasswordModal}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          {#if passwordModalMode === "change" && pinStep === 1}
+            <div class="pin-step-label">请输入原密码</div>
+          {:else if pinStep === 1 && (passwordModalMode === "set" || passwordModalMode === "change")}
+            <div class="pin-step-label">请输入4位数字密码</div>
+          {:else if pinStep === 2}
+            <div class="pin-step-label">请再次输入密码确认</div>
+          {:else if passwordModalMode === "verify"}
+            <div class="pin-step-label">请输入密码</div>
+          {/if}
+
+          <div class="pin-display">
+            {#each Array(4) as _, i}
+              <div class="pin-dot" class:filled={i < currentPinDisplay().length}></div>
+            {/each}
+          </div>
+
+          {#if passwordErrorMsg}
+            <div class="pin-error">{passwordErrorMsg}</div>
+          {/if}
+
+          {#if generatedPassword && pinStep === 1}
+            <div class="generated-pwd-box">
+              <span class="generated-pwd-label">随机密码:</span>
+              <span class="generated-pwd-value">{generatedPassword}</span>
+              <button class="btn-use-pwd" onclick={useGeneratedPassword}>使用此密码</button>
+            </div>
+          {/if}
+
+          <div class="numpad">
+            <button class="num-key" onclick={() => handleNumpadInput("1")}>1</button>
+            <button class="num-key" onclick={() => handleNumpadInput("2")}>2</button>
+            <button class="num-key" onclick={() => handleNumpadInput("3")}>3</button>
+            <button class="num-key" onclick={() => handleNumpadInput("4")}>4</button>
+            <button class="num-key" onclick={() => handleNumpadInput("5")}>5</button>
+            <button class="num-key" onclick={() => handleNumpadInput("6")}>6</button>
+            <button class="num-key" onclick={() => handleNumpadInput("7")}>7</button>
+            <button class="num-key" onclick={() => handleNumpadInput("8")}>8</button>
+            <button class="num-key" onclick={() => handleNumpadInput("9")}>9</button>
+            <button class="num-key action-key" onclick={handleNumpadClear}>清除</button>
+            <button class="num-key" onclick={() => handleNumpadInput("0")}>0</button>
+            <button class="num-key delete-key" onclick={handleNumpadDelete}>⌫</button>
+          </div>
+
+          {#if passwordModalMode === "change" && pinStep === 1 && oldPinInput.length === 4}
+            <button class="btn btn-primary modal-submit-btn" onclick={submitOldPassword} disabled={isPasswordSubmitting}>
+              {isPasswordSubmitting ? "验证中..." : "验证原密码"}
+            </button>
+          {/if}
+
+          {#if (passwordModalMode === "set" || passwordModalMode === "change") && pinStep === 1 && !generatedPassword}
+            <button class="btn btn-secondary modal-action-btn" onclick={generateRandomPwd}>
+              随机生成密码
+            </button>
+          {/if}
+
+          {#if passwordModalMode === "change" && pinStep !== 1}
+            <div class="modal-actions">
+              <button class="btn btn-danger" onclick={resetPasswordAction}>重置密码</button>
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
   {/if}
@@ -317,7 +613,23 @@
 
   {#if isSharing && shareInfo}
     <div class="share-info">
-      <span class="share-label">🎉 局域网共享已开启</span>
+      <div class="share-info-header">
+        <span class="share-label">🎉 局域网共享已开启</span>
+        <div class="password-protection">
+          <div class="protection-status" class:enabled={passwordEnabled} class:disabled={!passwordEnabled}>
+            <span class="status-dot"></span>
+            <span class="status-text">{passwordEnabled ? "密码保护已开启" : "密码保护未开启"}</span>
+          </div>
+          <button class="btn btn-sm" class:btn-protection-on={passwordEnabled} class:btn-protection-off={!passwordEnabled} onclick={togglePasswordProtection}>
+            {passwordEnabled ? "关闭保护" : "开启保护"}
+          </button>
+          {#if hasPassword}
+            <button class="btn btn-sm btn-manage-pwd" onclick={() => openPasswordModal("change")}>
+              管理密码
+            </button>
+          {/if}
+        </div>
+      </div>
       <div class="share-content">
         {#if qrCodeDataUrl}
           <img src={qrCodeDataUrl} alt="二维码" class="qr-code" />
@@ -471,17 +783,6 @@
 </main>
 
 <style>
-  /* ============================================
-     Glassmorphism (玻璃拟态) 主题样式
-     设计特点:
-     - 柔和渐变网格背景 (深蓝到紫色)
-     - 毛玻璃效果 (backdrop-filter: blur)
-     - 细薄优雅的分隔线
-     - 圆角设计 (12px)
-     - 柔和阴影 (营造悬浮层次感)
-     - 未来感、高级、流畅
-     ============================================ */
-
   :global(*) {
     margin: 0;
     padding: 0;
@@ -505,9 +806,6 @@
     background: transparent;
   }
 
-  /* ============================================
-     播放器弹窗 - Glassmorphism 风格
-     ============================================ */
   .player-overlay {
     position: fixed;
     top: 0;
@@ -579,9 +877,6 @@
     background: #000;
   }
 
-  /* ============================================
-     头部区域 - Glassmorphism 风格
-     ============================================ */
   .header {
     display: flex;
     justify-content: space-between;
@@ -611,9 +906,6 @@
     gap: 12px;
   }
 
-  /* ============================================
-     按钮 - Glassmorphism 风格
-     ============================================ */
   .btn {
     display: flex;
     align-items: center;
@@ -649,7 +941,13 @@
     cursor: not-allowed;
   }
 
-  /* 主按钮 - 蓝色渐变 */
+  .btn-sm {
+    padding: 6px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+    gap: 4px;
+  }
+
   .btn-primary {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.8) 0%, rgba(37, 99, 235, 0.8) 100%);
     border-color: rgba(59, 130, 246, 0.5);
@@ -660,7 +958,6 @@
     box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
   }
 
-  /* 次按钮 - 紫色渐变 */
   .btn-secondary {
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.8) 0%, rgba(124, 58, 237, 0.8) 100%);
     border-color: rgba(139, 92, 246, 0.5);
@@ -671,7 +968,6 @@
     box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
   }
 
-  /* 分享按钮 - 青色渐变 */
   .btn-share {
     background: linear-gradient(135deg, rgba(6, 182, 212, 0.8) 0%, rgba(8, 145, 178, 0.8) 100%);
     border-color: rgba(6, 182, 212, 0.5);
@@ -682,7 +978,6 @@
     box-shadow: 0 8px 24px rgba(6, 182, 212, 0.4);
   }
 
-  /* 危险按钮 - 红色渐变 */
   .btn-danger {
     background: linear-gradient(135deg, rgba(239, 68, 68, 0.8) 0%, rgba(220, 38, 38, 0.8) 100%);
     border-color: rgba(239, 68, 68, 0.5);
@@ -693,9 +988,35 @@
     box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
   }
 
-  /* ============================================
-     文件夹路径 - Glassmorphism 风格
-     ============================================ */
+  .btn-protection-on {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.8) 0%, rgba(22, 163, 74, 0.8) 100%);
+    border-color: rgba(34, 197, 94, 0.5);
+  }
+
+  .btn-protection-on:hover:not(:disabled) {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 1) 0%, rgba(22, 163, 74, 1) 100%);
+    box-shadow: 0 8px 24px rgba(34, 197, 94, 0.4);
+  }
+
+  .btn-protection-off {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-protection-off:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-manage-pwd {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+  }
+
+  .btn-manage-pwd:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.35);
+  }
+
   .folder-path {
     display: flex;
     align-items: center;
@@ -723,9 +1044,6 @@
     font-weight: 400;
   }
 
-  /* ============================================
-     共享信息面板 - Glassmorphism 风格
-     ============================================ */
   .share-info {
     display: flex;
     flex-direction: column;
@@ -740,11 +1058,64 @@
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 
+  .share-info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
   .share-label {
     font-weight: 600;
     color: #06b6d4;
     font-size: 14px;
     letter-spacing: 0.5px;
+  }
+
+  .password-protection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .protection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .protection-status.enabled {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+  }
+
+  .protection-status.disabled {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .protection-status.enabled .status-dot {
+    background: #4ade80;
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
+  }
+
+  .protection-status.disabled .status-dot {
+    background: rgba(255, 255, 255, 0.3);
   }
 
   .firewall-hint {
@@ -830,9 +1201,6 @@
     font-weight: 600;
   }
 
-  /* ============================================
-     错误消息 - Glassmorphism 风格
-     ============================================ */
   .error-message {
     display: flex;
     align-items: center;
@@ -849,9 +1217,6 @@
     -webkit-backdrop-filter: blur(10px);
   }
 
-  /* ============================================
-     内容区域 - Glassmorphism 风格
-     ============================================ */
   .content {
     flex: 1;
     background: rgba(255, 255, 255, 0.04);
@@ -865,9 +1230,6 @@
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   }
 
-  /* ============================================
-     加载状态 - Glassmorphism 风格
-     ============================================ */
   .loading {
     display: flex;
     flex-direction: column;
@@ -898,9 +1260,6 @@
     }
   }
 
-  /* ============================================
-     空状态 - Glassmorphism 风格
-     ============================================ */
   .empty-state {
     display: flex;
     flex-direction: column;
@@ -927,9 +1286,6 @@
     color: rgba(255, 255, 255, 0.4);
   }
 
-  /* ============================================
-     工具栏 - Glassmorphism 风格
-     ============================================ */
   .video-toolbar {
     display: flex;
     justify-content: space-between;
@@ -982,9 +1338,6 @@
     font-size: 14px;
   }
 
-  /* ============================================
-     视频表格 - Glassmorphism 风格
-     ============================================ */
   .table-container {
     flex: 1;
     overflow: auto;
@@ -1142,7 +1495,6 @@
     animation: spin 1s linear infinite;
   }
 
-  /* 滚动条样式 */
   .table-container::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -1160,5 +1512,196 @@
 
   .table-container::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.25);
+  }
+
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-container {
+    width: 380px;
+    max-width: 95vw;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ffffff;
+  }
+
+  .modal-body {
+    padding: 24px;
+  }
+
+  .pin-step-label {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+
+  .pin-display {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .pin-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    transition: all 0.2s ease;
+  }
+
+  .pin-dot.filled {
+    background: #60a5fa;
+    border-color: #60a5fa;
+    box-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
+  }
+
+  .pin-error {
+    text-align: center;
+    color: #fca5a5;
+    font-size: 13px;
+    margin-bottom: 12px;
+    min-height: 20px;
+  }
+
+  .generated-pwd-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .generated-pwd-label {
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .generated-pwd-value {
+    color: #4ade80;
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: 4px;
+  }
+
+  .btn-use-pwd {
+    padding: 4px 10px;
+    background: rgba(34, 197, 94, 0.2);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .btn-use-pwd:hover {
+    background: rgba(34, 197, 94, 0.35);
+  }
+
+  .numpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .num-key {
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  .num-key:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(96, 165, 250, 0.3);
+  }
+
+  .num-key:active {
+    background: rgba(96, 165, 250, 0.2);
+    transform: scale(0.95);
+  }
+
+  .num-key.action-key {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .num-key.delete-key {
+    font-size: 16px;
+  }
+
+  .num-key.delete-key:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+  }
+
+  .modal-submit-btn {
+    width: 100%;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  .modal-action-btn {
+    width: 100%;
+    justify-content: center;
+    margin-top: 4px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+  }
+
+  .modal-actions .btn {
+    font-size: 12px;
+    padding: 8px 16px;
   }
 </style>

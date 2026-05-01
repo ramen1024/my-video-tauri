@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频扫描器 - 密码验证</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f172a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 24px;
+        }
+
+        .login-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 40px 32px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .lock-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            background: rgba(96, 165, 250, 0.2);
+            border: 1px solid rgba(96, 165, 250, 0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+
+        .login-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .pin-display {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .pin-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .pin-dot.filled {
+            background: #60a5fa;
+            border-color: #60a5fa;
+            box-shadow: 0 0 12px rgba(96, 165, 250, 0.5);
+        }
+
+        .pin-dot.error {
+            background: #ef4444;
+            border-color: #ef4444;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+            animation: shake 0.4s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .error-message {
+            text-align: center;
+            color: #fca5a5;
+            font-size: 13px;
+            margin-bottom: 16px;
+            min-height: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .numpad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .num-btn {
+            padding: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            font-size: 22px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .num-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(96, 165, 250, 0.4);
+        }
+
+        .num-btn:active {
+            background: rgba(96, 165, 250, 0.3);
+            transform: scale(0.95);
+        }
+
+        .num-btn.action {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .num-btn.delete {
+            font-size: 18px;
+        }
+
+        .num-btn.delete:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.4);
+            color: #fca5a5;
+        }
+
+        .lockout-message {
+            text-align: center;
+            color: #fbbf24;
+            font-size: 14px;
+            padding: 16px;
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            border-radius: 8px;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="lock-icon">🔒</div>
+                <div class="login-title">密码验证</div>
+                <div class="login-subtitle">请输入4位数字密码访问共享资源</div>
+            </div>
+
+            <div class="pin-display" id="pinDisplay">
+                <div class="pin-dot" id="dot0"></div>
+                <div class="pin-dot" id="dot1"></div>
+                <div class="pin-dot" id="dot2"></div>
+                <div class="pin-dot" id="dot3"></div>
+            </div>
+
+            <div class="error-message" id="errorMsg"></div>
+
+            <div class="numpad" id="numpad">
+                <button class="num-btn" onclick="inputDigit('1')">1</button>
+                <button class="num-btn" onclick="inputDigit('2')">2</button>
+                <button class="num-btn" onclick="inputDigit('3')">3</button>
+                <button class="num-btn" onclick="inputDigit('4')">4</button>
+                <button class="num-btn" onclick="inputDigit('5')">5</button>
+                <button class="num-btn" onclick="inputDigit('6')">6</button>
+                <button class="num-btn" onclick="inputDigit('7')">7</button>
+                <button class="num-btn" onclick="inputDigit('8')">8</button>
+                <button class="num-btn" onclick="inputDigit('9')">9</button>
+                <button class="num-btn action" onclick="clearInput()">清除</button>
+                <button class="num-btn" onclick="inputDigit('0')">0</button>
+                <button class="num-btn delete" onclick="deleteDigit()">⌫</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pin = '';
+        let isSubmitting = false;
+        let isLocked = false;
+
+        function updateDots() {
+            for (let i = 0; i < 4; i++) {
+                const dot = document.getElementById('dot' + i);
+                dot.className = 'pin-dot';
+                if (i < pin.length) {
+                    dot.classList.add('filled');
+                }
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            const dots = document.querySelectorAll('.pin-dot.filled');
+            dots.forEach(d => {
+                d.classList.remove('filled');
+                d.classList.add('error');
+            });
+            setTimeout(() => {
+                pin = '';
+                updateDots();
+            }, 500);
+        }
+
+        function clearError() {
+            document.getElementById('errorMsg').textContent = '';
+        }
+
+        function inputDigit(d) {
+            if (isSubmitting || isLocked || pin.length >= 4) return;
+            clearError();
+            pin += d;
+            updateDots();
+            if (pin.length === 4) {
+                submitPin();
+            }
+        }
+
+        function deleteDigit() {
+            if (isSubmitting || isLocked || pin.length === 0) return;
+            clearError();
+            pin = pin.slice(0, -1);
+            updateDots();
+        }
+
+        function clearInput() {
+            if (isSubmitting || isLocked) return;
+            clearError();
+            pin = '';
+            updateDots();
+        }
+
+        async function submitPin() {
+            if (isSubmitting || isLocked) return;
+            isSubmitting = true;
+
+            try {
+                const response = await fetch('/auth', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pin })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    if (data.message && data.message.includes('锁定')) {
+                        isLocked = true;
+                        const match = data.message.match(/(\d+)秒/);
+                        const seconds = match ? match[1] : '30';
+                        showError('');
+                        document.getElementById('errorMsg').innerHTML =
+                            '<div class="lockout-message">连续验证失败次数过多，请' + seconds + '秒后重试</div>';
+                        const countdown = setInterval(() => {
+                            const remaining = parseInt(seconds) - 1;
+                            if (remaining <= 0) {
+                                clearInterval(countdown);
+                                isLocked = false;
+                                clearError();
+                            } else {
+                                document.getElementById('errorMsg').innerHTML =
+                                    '<div class="lockout-message">连续验证失败次数过多，请' + remaining + '秒后重试</div>';
+                            }
+                        }, 1000);
+                    } else {
+                        showError(data.message || '密码错误，请重试');
+                    }
+                }
+            } catch (error) {
+                showError('网络错误，请重试');
+            } finally {
+                isSubmitting = false;
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key >= '0' && e.key <= '9') {
+                inputDigit(e.key);
+            } else if (e.key === 'Backspace') {
+                deleteDigit();
+            } else if (e.key === 'Escape') {
+                clearInput();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -7,17 +7,12 @@ use std::fmt;
 #[derive(Debug, Serialize, Clone)]
 #[serde(tag = "type", content = "message")]
 pub enum AppError {
-    /// 路径不存在或无效
     InvalidPath(String),
-    /// 扫描操作被取消
     ScanCancelled,
-    /// 服务器已在运行
     ServerAlreadyRunning,
-    /// 服务器未运行
     ServerNotRunning,
-    /// IO 错误
     IoError(String),
-    /// 其他错误
+    PasswordError(String),
     Other(String),
 }
 
@@ -29,6 +24,7 @@ impl fmt::Display for AppError {
             AppError::ServerAlreadyRunning => write!(f, "服务器已在运行"),
             AppError::ServerNotRunning => write!(f, "服务器未运行"),
             AppError::IoError(msg) => write!(f, "IO 错误: {}", msg),
+            AppError::PasswordError(msg) => write!(f, "密码错误: {}", msg),
             AppError::Other(msg) => write!(f, "{}", msg),
         }
     }

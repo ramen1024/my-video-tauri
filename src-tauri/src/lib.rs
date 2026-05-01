@@ -10,36 +10,25 @@ use walkdir::WalkDir;
 
 mod error;
 mod models;
+mod password;
 mod utils;
 
 pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
+pub use password::PasswordStatus;
 pub use utils::{format_system_time, get_local_ips, is_root_directory, sanitize_video_path};
 
-// ============================================
-// 全局状态
-// ============================================
-
-/// 扫描取消标志 - 用于中途取消扫描操作
 static CANCEL_SCAN_FLAG: once_cell::sync::Lazy<Arc<AtomicBool>> =
     once_cell::sync::Lazy::new(|| Arc::new(AtomicBool::new(false)));
 
-/// 共享视频列表 - 用于 HTTP 服务器动态刷新
 static SHARED_VIDEOS: once_cell::sync::Lazy<Arc<RwLock<Vec<VideoFile>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(Vec::new())));
 
-/// 共享文件夹路径 - 用于重新扫描
 static SHARED_FOLDER_PATH: once_cell::sync::Lazy<Arc<RwLock<String>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(String::new())));
 
-/// 服务器运行状态标志
 static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-// ============================================
-// Tauri 命令函数
-// ============================================
-
-/// 扫描文件夹中的视频文件
 #[tauri::command]
 fn scan_videos(folder_path: String) -> Result<(), AppError> {
     use rayon::prelude::*;
@@ -153,29 +142,62 @@ fn scan_videos(folder_path: String) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 获取共享视频列表
 #[tauri::command]
 fn get_shared_videos() -> Result<Vec<VideoFile>, AppError> {
     Ok(SHARED_VIDEOS.read().clone())
 }
 
-/// 取消正在进行的扫描操作
 #[tauri::command]
 fn cancel_scan() {
     CANCEL_SCAN_FLAG.store(true, Ordering::SeqCst);
 }
 
-/// 使用系统默认播放器播放视频
-///
-/// # 安全改进
-/// 使用 Tauri 的 opener 插件替代手动执行系统命令，避免命令注入风险。
 #[tauri::command]
 fn play_video(file_path: String) -> Result<(), AppError> {
     tauri_plugin_opener::open_path(&file_path, None::<&str>)
         .map_err(|e| AppError::IoError(format!("无法打开视频: {}", e)))
 }
 
-/// 启动共享服务器
+#[tauri::command]
+fn get_password_status() -> PasswordStatus {
+    password::get_password_status()
+}
+
+#[tauri::command]
+fn set_password_enabled(enabled: bool) -> Result<(), AppError> {
+    if enabled && !password::has_password_set() {
+        return Err(AppError::PasswordError(
+            "请先设置密码再启用密码保护".to_string(),
+        ));
+    }
+    password::set_password_enabled(enabled);
+    let status = if enabled { "开启" } else { "关闭" };
+    println!("[安全审计] 密码保护功能已{} - 时间: {}", status, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+    Ok(())
+}
+
+#[tauri::command]
+fn set_password(password: String) -> Result<(), AppError> {
+    password::set_password(&password).map_err(AppError::PasswordError)
+}
+
+#[tauri::command]
+fn verify_password_cmd(password: String) -> Result<bool, AppError> {
+    password::verify_password(&password).map_err(AppError::PasswordError)
+}
+
+#[tauri::command]
+fn generate_random_password() -> String {
+    password::generate_random_password()
+}
+
+#[tauri::command]
+fn reset_password() -> Result<(), AppError> {
+    password::reset_password();
+    println!("[安全审计] 密码已重置 - 时间: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+    Ok(())
+}
+
 #[tauri::command]
 fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
     if SERVER_RUNNING.load(Ordering::SeqCst) {
@@ -192,7 +214,6 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
     let ips = get_local_ips();
 
     let ips_clone = ips.clone();
-    let _folder_path_clone = folder_path.clone();
 
     SERVER_RUNNING.store(true, Ordering::SeqCst);
 
@@ -203,35 +224,81 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
             Ok(server) => {
                 println!("Share server started at http://{:?}:{}", ips_clone, port);
 
-                for request in server.incoming_requests() {
+                for mut request in server.incoming_requests() {
                     if !SERVER_RUNNING.load(Ordering::SeqCst) {
                         break;
                     }
 
-                    let url = request.url();
+                    let url = request.url().to_string();
+                    let method = request.method().clone();
+
+                    if url == "/auth" && method == tiny_http::Method::Post {
+                        let response = handle_auth_request(&mut request);
+                        request.respond(response).ok();
+                        continue;
+                    }
+
+                    if password::is_password_enabled() {
+                        let cookie_header = request
+                            .headers()
+                            .iter()
+                            .find(|h| h.field.as_str() == "Cookie")
+                            .map(|h| h.value.as_str())
+                            .unwrap_or("");
+
+                        if !password::check_web_auth(cookie_header) {
+                            if url == "/login" || url == "/login.html" {
+                                let html = include_str!("login_template.html").to_string();
+                                let html_bytes = html.into_bytes();
+                                let html_len = html_bytes.len();
+                                let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(html_bytes));
+                                let response = tiny_http::Response::new(
+                                    200.into(),
+                                    vec![
+                                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Length"[..], html_len.to_string().as_bytes()).unwrap(),
+                                    ],
+                                    cursor,
+                                    Some(html_len),
+                                    None,
+                                );
+                                request.respond(response).ok();
+                                continue;
+                            }
+
+                            let redirect_html = r#"<!DOCTYPE html><html><head><meta charset="UTF-8"><script>window.location.href='/login';</script></head><body></body></html>"#;
+                            let html_bytes = redirect_html.as_bytes().to_vec();
+                            let html_len = html_bytes.len();
+                            let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(html_bytes));
+                            let response = tiny_http::Response::new(
+                                302.into(),
+                                vec![
+                                    tiny_http::Header::from_bytes(&b"Location"[..], &b"/login"[..]).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
+                                    tiny_http::Header::from_bytes(&b"Content-Length"[..], html_len.to_string().as_bytes()).unwrap(),
+                                ],
+                                cursor,
+                                Some(html_len),
+                                None,
+                            );
+                            request.respond(response).ok();
+                            continue;
+                        }
+                    }
 
                     let response: tiny_http::Response<Box<dyn Read + Send>> = 'response: {
-                        match url {
+                        match url.as_str() {
                             "/" | "/index.html" => {
                                 let videos = SHARED_VIDEOS.read().clone();
                                 let html = generate_html(&videos, &ips_clone, port);
                                 let html_bytes = html.into_bytes();
                                 let html_len = html_bytes.len();
-                                let cursor: Box<dyn Read + Send> =
-                                    Box::new(Cursor::new(html_bytes));
+                                let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(html_bytes));
                                 break 'response tiny_http::Response::new(
                                     200.into(),
                                     vec![
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Type"[..],
-                                            &b"text/html; charset=utf-8"[..],
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Length"[..],
-                                            html_len.to_string().as_bytes(),
-                                        )
-                                        .unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Length"[..], html_len.to_string().as_bytes()).unwrap(),
                                     ],
                                     cursor,
                                     Some(html_len),
@@ -243,31 +310,14 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 let json = serde_json::to_string(&videos).unwrap();
                                 let json_bytes = json.into_bytes();
                                 let json_len = json_bytes.len();
-                                let cursor: Box<dyn Read + Send> =
-                                    Box::new(Cursor::new(json_bytes));
+                                let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
                                 break 'response tiny_http::Response::new(
                                     200.into(),
                                     vec![
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Type"[..],
-                                            &b"application/json"[..],
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Length"[..],
-                                            json_len.to_string().as_bytes(),
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Access-Control-Allow-Origin"[..],
-                                            &b"*"[..],
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Cache-Control"[..],
-                                            &b"no-cache, no-store, must-revalidate"[..],
-                                        )
-                                        .unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache, no-store, must-revalidate"[..]).unwrap(),
                                     ],
                                     cursor,
                                     Some(json_len),
@@ -278,39 +328,21 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 let folder_path = SHARED_FOLDER_PATH.read().clone();
                                 let result = if !folder_path.is_empty() {
                                     match scan_videos(folder_path) {
-                                        Ok(_) => {
-                                            r#"{"success": true, "message": "视频列表已刷新"}"#
-                                        }
-                                        Err(e) => &format!(
-                                            r#"{{"success": false, "message": "{}"}}"#,
-                                            e
-                                        ),
+                                        Ok(_) => r#"{"success": true, "message": "视频列表已刷新"}"#.to_string(),
+                                        Err(e) => format!(r#"{{"success": false, "message": "{}"}}"#, e),
                                     }
                                 } else {
-                                    r#"{"success": false, "message": "未设置共享文件夹"}"#
+                                    r#"{"success": false, "message": "未设置共享文件夹"}"#.to_string()
                                 };
-                                let json_bytes = result.as_bytes().to_vec();
+                                let json_bytes = result.into_bytes();
                                 let json_len = json_bytes.len();
-                                let cursor: Box<dyn Read + Send> =
-                                    Box::new(Cursor::new(json_bytes));
+                                let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
                                 break 'response tiny_http::Response::new(
                                     200.into(),
                                     vec![
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Type"[..],
-                                            &b"application/json"[..],
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Length"[..],
-                                            json_len.to_string().as_bytes(),
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Access-Control-Allow-Origin"[..],
-                                            &b"*"[..],
-                                        )
-                                        .unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
+                                        tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
                                     ],
                                     cursor,
                                     Some(json_len),
@@ -320,29 +352,7 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                             _ if url.starts_with("/video/") => {
                                 let video_name = url.strip_prefix("/video/").unwrap_or("");
                                 if video_name.is_empty() {
-                                    let err_msg = "Invalid video path";
-                                    let err_bytes = err_msg.as_bytes().to_vec();
-                                    let err_len = err_bytes.len();
-                                    let cursor: Box<dyn Read + Send> =
-                                        Box::new(Cursor::new(err_bytes));
-                                    break 'response tiny_http::Response::new(
-                                        400.into(),
-                                        vec![
-                                            tiny_http::Header::from_bytes(
-                                                &b"Content-Type"[..],
-                                                &b"text/plain"[..],
-                                            )
-                                            .unwrap(),
-                                            tiny_http::Header::from_bytes(
-                                                &b"Content-Length"[..],
-                                                err_len.to_string().as_bytes(),
-                                            )
-                                            .unwrap(),
-                                        ],
-                                        cursor,
-                                        Some(err_len),
-                                        None,
-                                    );
+                                    break 'response make_text_response(400, "Invalid video path");
                                 }
 
                                 let folder_path = SHARED_FOLDER_PATH.read().clone();
@@ -353,43 +363,16 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                 ) {
                                     Some(path) => path,
                                     None => {
-                                        let err_msg = "Access denied: invalid path";
-                                        let err_bytes = err_msg.as_bytes().to_vec();
-                                        let err_len = err_bytes.len();
-                                        let cursor: Box<dyn Read + Send> =
-                                            Box::new(Cursor::new(err_bytes));
-                                        break 'response tiny_http::Response::new(
-                                            403.into(),
-                                            vec![
-                                                tiny_http::Header::from_bytes(
-                                                    &b"Content-Type"[..],
-                                                    &b"text/plain"[..],
-                                                )
-                                                .unwrap(),
-                                                tiny_http::Header::from_bytes(
-                                                    &b"Content-Length"[..],
-                                                    err_len.to_string().as_bytes(),
-                                                )
-                                                .unwrap(),
-                                            ],
-                                            cursor,
-                                            Some(err_len),
-                                            None,
-                                        );
+                                        break 'response make_text_response(403, "Access denied: invalid path");
                                     }
                                 };
 
-                                println!(
-                                    "Video request: {} -> {}",
-                                    video_name,
-                                    video_path.display()
-                                );
+                                println!("Video request: {} -> {}", video_name, video_path.display());
 
                                 if video_path.exists() {
                                     let file = File::open(&video_path);
                                     if let Ok(mut file) = file {
-                                        let file_size =
-                                            file.metadata().map(|m| m.len()).unwrap_or(0);
+                                        let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
                                         let mut range_start = 0u64;
                                         let mut range_end = file_size.saturating_sub(1);
@@ -404,36 +387,28 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                             println!("Range request: {}", range_value);
                                             has_range = true;
                                             if range_value.starts_with("bytes=") {
-                                                let range_parts: Vec<&str> =
-                                                    range_value[6..].split('-').collect();
+                                                let range_parts: Vec<&str> = range_value[6..].split('-').collect();
                                                 if let Some(start) = range_parts.first() {
                                                     if !start.is_empty() {
-                                                        range_start =
-                                                            start.parse().unwrap_or(0);
+                                                        range_start = start.parse().unwrap_or(0);
                                                     }
                                                 }
                                                 if let Some(end) = range_parts.get(1) {
                                                     if !end.is_empty() {
-                                                        range_end = end
-                                                            .parse()
-                                                            .unwrap_or(file_size.saturating_sub(1));
+                                                        range_end = end.parse().unwrap_or(file_size.saturating_sub(1));
                                                     }
                                                 }
                                             }
                                         }
 
-                                        let content_length =
-                                            range_end.saturating_sub(range_start) + 1;
+                                        let content_length = range_end.saturating_sub(range_start) + 1;
                                         println!(
                                             "Serving bytes {}-{} / {} (length: {})",
                                             range_start, range_end, file_size, content_length
                                         );
 
                                         if file.seek(SeekFrom::Start(range_start)).is_ok() {
-                                            let content_type = match video_path
-                                                .extension()
-                                                .and_then(|e| e.to_str())
-                                            {
+                                            let content_type = match video_path.extension().and_then(|e| e.to_str()) {
                                                 Some("mp4") => "video/mp4",
                                                 Some("webm") => "video/webm",
                                                 Some("mkv") => "video/x-matroska",
@@ -442,148 +417,34 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
                                                 _ => "application/octet-stream",
                                             };
 
-                                            let limited_reader: Take<File> =
-                                                file.take(content_length);
-                                            let boxed_reader: Box<dyn Read + Send> =
-                                                Box::new(limited_reader);
+                                            let limited_reader: Take<File> = file.take(content_length);
+                                            let boxed_reader: Box<dyn Read + Send> = Box::new(limited_reader);
 
                                             break 'response tiny_http::Response::new(
                                                 if has_range { 206 } else { 200 }.into(),
                                                 vec![
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Content-Type"[..],
-                                                        content_type.as_bytes(),
-                                                    )
-                                                    .unwrap(),
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Accept-Ranges"[..],
-                                                        &b"bytes"[..],
-                                                    )
-                                                    .unwrap(),
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Content-Range"[..],
-                                                        format!(
-                                                            "bytes {}-{}/{}",
-                                                            range_start, range_end, file_size
-                                                        )
-                                                        .as_bytes(),
-                                                    )
-                                                    .unwrap(),
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Content-Length"[..],
-                                                        content_length.to_string().as_bytes(),
-                                                    )
-                                                    .unwrap(),
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Cache-Control"[..],
-                                                        &b"no-cache"[..],
-                                                    )
-                                                    .unwrap(),
+                                                    tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),
+                                                    tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap(),
+                                                    tiny_http::Header::from_bytes(&b"Content-Range"[..], format!("bytes {}-{}/{}", range_start, range_end, file_size).as_bytes()).unwrap(),
+                                                    tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap(),
+                                                    tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap(),
                                                 ],
                                                 boxed_reader,
                                                 Some(content_length as usize),
                                                 None,
                                             );
                                         } else {
-                                            let err_msg = "Seek error".to_string();
-                                            let err_bytes = err_msg.into_bytes();
-                                            let err_len = err_bytes.len();
-                                            let cursor: Box<dyn Read + Send> =
-                                                Box::new(Cursor::new(err_bytes));
-                                            break 'response tiny_http::Response::new(
-                                                500.into(),
-                                                vec![
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Content-Type"[..],
-                                                        &b"text/plain"[..],
-                                                    )
-                                                    .unwrap(),
-                                                    tiny_http::Header::from_bytes(
-                                                        &b"Content-Length"[..],
-                                                        err_len.to_string().as_bytes(),
-                                                    )
-                                                    .unwrap(),
-                                                ],
-                                                cursor,
-                                                Some(err_len),
-                                                None,
-                                            );
+                                            break 'response make_text_response(500, "Seek error");
                                         }
                                     } else {
-                                        let err_msg = "File not found".to_string();
-                                        let err_bytes = err_msg.into_bytes();
-                                        let err_len = err_bytes.len();
-                                        let cursor: Box<dyn Read + Send> =
-                                            Box::new(Cursor::new(err_bytes));
-                                        break 'response tiny_http::Response::new(
-                                            404.into(),
-                                            vec![
-                                                tiny_http::Header::from_bytes(
-                                                    &b"Content-Type"[..],
-                                                    &b"text/plain"[..],
-                                                )
-                                                .unwrap(),
-                                                tiny_http::Header::from_bytes(
-                                                    &b"Content-Length"[..],
-                                                    err_len.to_string().as_bytes(),
-                                                )
-                                                .unwrap(),
-                                            ],
-                                            cursor,
-                                            Some(err_len),
-                                            None,
-                                        );
+                                        break 'response make_text_response(404, "File not found");
                                     }
                                 } else {
-                                    let err_msg = "File not found".to_string();
-                                    let err_bytes = err_msg.into_bytes();
-                                    let err_len = err_bytes.len();
-                                    let cursor: Box<dyn Read + Send> =
-                                        Box::new(Cursor::new(err_bytes));
-                                    break 'response tiny_http::Response::new(
-                                        404.into(),
-                                        vec![
-                                            tiny_http::Header::from_bytes(
-                                                &b"Content-Type"[..],
-                                                &b"text/plain"[..],
-                                            )
-                                            .unwrap(),
-                                            tiny_http::Header::from_bytes(
-                                                &b"Content-Length"[..],
-                                                err_len.to_string().as_bytes(),
-                                            )
-                                            .unwrap(),
-                                        ],
-                                        cursor,
-                                        Some(err_len),
-                                        None,
-                                    );
+                                    break 'response make_text_response(404, "File not found");
                                 }
                             }
                             _ => {
-                                let err_msg = "Not found".to_string();
-                                let err_bytes = err_msg.into_bytes();
-                                let err_len = err_bytes.len();
-                                let cursor: Box<dyn Read + Send> =
-                                    Box::new(Cursor::new(err_bytes));
-                                break 'response tiny_http::Response::new(
-                                    404.into(),
-                                    vec![
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Type"[..],
-                                            &b"text/plain"[..],
-                                        )
-                                        .unwrap(),
-                                        tiny_http::Header::from_bytes(
-                                            &b"Content-Length"[..],
-                                            err_len.to_string().as_bytes(),
-                                        )
-                                        .unwrap(),
-                                    ],
-                                    cursor,
-                                    Some(err_len),
-                                    None,
-                                );
+                                break 'response make_text_response(404, "Not found");
                             }
                         }
                     };
@@ -600,20 +461,104 @@ fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo,
     Ok(ShareServerInfo { ips, port, videos })
 }
 
-/// 停止共享服务器
+fn make_text_response(status_code: u16, message: &str) -> tiny_http::Response<Box<dyn Read + Send>> {
+    let err_bytes = message.as_bytes().to_vec();
+    let err_len = err_bytes.len();
+    let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(err_bytes));
+    tiny_http::Response::new(
+        status_code.into(),
+        vec![
+            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..]).unwrap(),
+            tiny_http::Header::from_bytes(&b"Content-Length"[..], err_len.to_string().as_bytes()).unwrap(),
+        ],
+        cursor,
+        Some(err_len),
+        None,
+    )
+}
+
+fn handle_auth_request(request: &mut tiny_http::Request) -> tiny_http::Response<Box<dyn Read + Send>> {
+    let mut body = String::new();
+    if let Some(len) = request.body_length() {
+        let mut limited = request.as_reader().take(len as u64);
+        let _ = limited.read_to_string(&mut body);
+    }
+
+    let ip = request.remote_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+
+    match serde_json::from_str::<serde_json::Value>(&body) {
+        Ok(data) => {
+            let password = data["password"].as_str().unwrap_or("");
+            if password.is_empty() {
+                let json = r#"{"success": false, "message": "请输入密码"}"#;
+                return make_json_response(400, json);
+            }
+
+            match password::authenticate_web_request(&ip, password) {
+                Ok(token) => {
+                    println!("[安全审计] 密码验证成功 - IP: {} - 时间: {}", ip, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+                    let json = format!(r#"{{"success": true, "token": "{}"}}"#, token);
+                    let json_bytes = json.into_bytes();
+                    let json_len = json_bytes.len();
+                    let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
+                    tiny_http::Response::new(
+                        200.into(),
+                        vec![
+                            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
+                            tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
+                            tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
+                            tiny_http::Header::from_bytes(
+                                &b"Set-Cookie"[..],
+                                format!("session_token={}; Path=/; Max-Age=3600; HttpOnly", token).as_bytes(),
+                            ).unwrap(),
+                        ],
+                        cursor,
+                        Some(json_len),
+                        None,
+                    )
+                }
+                Err(e) => {
+                    println!("[安全审计] 密码验证失败 - IP: {} - 时间: {}", ip, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+                    let json = format!(r#"{{"success": false, "message": "{}"}}"#, e);
+                    make_json_response(401, &json)
+                }
+            }
+        }
+        Err(_) => {
+            let json = r#"{"success": false, "message": "无效的请求数据"}"#;
+            make_json_response(400, json)
+        }
+    }
+}
+
+fn make_json_response(status_code: u16, json: &str) -> tiny_http::Response<Box<dyn Read + Send>> {
+    let json_bytes = json.as_bytes().to_vec();
+    let json_len = json_bytes.len();
+    let cursor: Box<dyn Read + Send> = Box::new(Cursor::new(json_bytes));
+    tiny_http::Response::new(
+        status_code.into(),
+        vec![
+            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
+            tiny_http::Header::from_bytes(&b"Content-Length"[..], json_len.to_string().as_bytes()).unwrap(),
+            tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
+        ],
+        cursor,
+        Some(json_len),
+        None,
+    )
+}
+
 #[tauri::command]
 fn stop_share_server() -> Result<(), AppError> {
     SERVER_RUNNING.store(false, Ordering::SeqCst);
     Ok(())
 }
 
-/// 获取服务器运行状态
 #[tauri::command]
 fn get_server_status() -> bool {
     SERVER_RUNNING.load(Ordering::SeqCst)
 }
 
-/// 生成网页端 HTML
 fn generate_html(_videos: &[VideoFile], ips: &[String], port: u16) -> String {
     let addresses: String = ips
         .iter()
@@ -624,10 +569,6 @@ fn generate_html(_videos: &[VideoFile], ips: &[String], port: u16) -> String {
     let template = include_str!("html_template.html");
     template.replace("{addresses}", &addresses)
 }
-
-// ============================================
-// 应用入口
-// ============================================
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -643,7 +584,13 @@ pub fn run() {
             cancel_scan,
             start_share_server,
             stop_share_server,
-            get_server_status
+            get_server_status,
+            get_password_status,
+            set_password_enabled,
+            set_password,
+            verify_password_cmd,
+            generate_random_password,
+            reset_password,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
