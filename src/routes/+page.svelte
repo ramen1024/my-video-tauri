@@ -701,9 +701,9 @@
   .setup-manual-btn:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.8); }
 
   /* 内嵌数字键盘面板 */
-  .pwd-input-panel { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 16px 10px; background: rgba(15,23,42,.5); border: 1px solid rgba(255,255,255,.06); border-radius: 12px; margin-top: 4px; animation: slideDown .2s cubic-bezier(.16,1,.3,1); }
+  .pwd-input-panel { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 16px 10px; background: rgba(15,23,42,.5); border: 1px solid rgba(255,255,255,.06); border-radius: 12px; margin-top: 4px; animation: slideDown .2s cubic-bezier(.16,1,.3,1); }
   @keyframes slideDown { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-  .panel-label { font-size: 12px; color: rgba(255,255,255,.45); }
+  .panel-label { font-size: 12px; color: rgba(255,255,255,.45); text-align: center; }
   .pin-display { display: flex; justify-content: center; gap: 8px; }
   .pin-box { width: 34px; height: 42px; border-radius: 8px; background: rgba(255,255,255,.05); border: 1.5px solid rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: transparent; transition: all .2s ease; position: relative; overflow: hidden; }
   .pin-box.has-digit { color: #60a5fa; border-color: rgba(96,165,250,.3); background: rgba(96,165,250,.06); }
@@ -726,7 +726,7 @@
   .numpad-overlay.active { opacity: 1; pointer-events: auto; }
   .overlay-dots { display: flex; gap: 5px; }
   .od-dot { background: rgba(255,255,255,.5); }
-  .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; transition: opacity .2s ease; }
+  .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; transition: opacity .2s ease; }
   .numpad.dimmed { opacity: .4; }
   .num-key { height: 42px; border: 1px solid rgba(255,255,255,.1); border-radius: 8px; background: rgba(255,255,255,.05); color: #fff; font-size: 17px; font-weight: 500; cursor: pointer; transition: all .15s ease; user-select: none; position: relative; overflow: hidden; }
   .num-key:hover { background: rgba(255,255,255,.1); border-color: rgba(96,165,250,.25); }
