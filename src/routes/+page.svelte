@@ -21,16 +21,16 @@
 
   let passwordEnabled = $state(false);
   let hasPassword = $state(false);
+  let currentPassword = $state("");
   let showPasswordModal = $state(false);
   let passwordModalMode = $state("set");
   let pinInput = $state("");
-  let pinConfirm = $state("");
   let oldPinInput = $state("");
   let pinStep = $state(1);
   let passwordErrorMsg = $state("");
   let isPasswordSubmitting = $state(false);
-  let generatedPassword = $state("");
   let showResetConfirm = $state(false);
+  let previewPassword = $state("");
 
   const supportedExtensions = ["mp4", "webm", "ogg", "m4v"];
   const defaultSharePort = 6008;
@@ -211,6 +211,7 @@
       const status = await invoke("get_password_status");
       passwordEnabled = status.enabled;
       hasPassword = status.has_password;
+      currentPassword = status.password || "";
     } catch (e) {
       console.error("获取密码状态失败:", e);
     }
@@ -232,22 +233,20 @@
   function openPasswordModal(mode) {
     passwordModalMode = mode;
     pinInput = "";
-    pinConfirm = "";
     oldPinInput = "";
     pinStep = 1;
     passwordErrorMsg = "";
-    generatedPassword = "";
+    previewPassword = "";
     showPasswordModal = true;
   }
 
   function closePasswordModal() {
     showPasswordModal = false;
     pinInput = "";
-    pinConfirm = "";
     oldPinInput = "";
     pinStep = 1;
     passwordErrorMsg = "";
-    generatedPassword = "";
+    previewPassword = "";
   }
 
   function handleNumpadInput(digit) {
@@ -258,23 +257,16 @@
       if (oldPinInput.length < 4) {
         oldPinInput += digit;
       }
-    } else if (pinStep === 1) {
+    } else {
       if (pinInput.length < 4) {
         pinInput += digit;
       }
       if (pinInput.length === 4) {
         if (passwordModalMode === "set" || passwordModalMode === "change") {
-          pinStep = 2;
+          submitPasswordSet();
         } else if (passwordModalMode === "verify") {
           submitPasswordVerify();
         }
-      }
-    } else if (pinStep === 2) {
-      if (pinConfirm.length < 4) {
-        pinConfirm += digit;
-      }
-      if (pinConfirm.length === 4) {
-        submitPasswordSet();
       }
     }
   }
@@ -285,10 +277,8 @@
 
     if (pinStep === 1 && passwordModalMode === "change") {
       oldPinInput = oldPinInput.slice(0, -1);
-    } else if (pinStep === 1) {
+    } else {
       pinInput = pinInput.slice(0, -1);
-    } else if (pinStep === 2) {
-      pinConfirm = pinConfirm.slice(0, -1);
     }
   }
 
@@ -298,10 +288,8 @@
 
     if (pinStep === 1 && passwordModalMode === "change") {
       oldPinInput = "";
-    } else if (pinStep === 1) {
+    } else {
       pinInput = "";
-    } else if (pinStep === 2) {
-      pinConfirm = "";
     }
   }
 
@@ -325,18 +313,13 @@
   }
 
   async function submitPasswordSet() {
-    if (pinInput !== pinConfirm) {
-      passwordErrorMsg = "两次输入的密码不一致，请重新输入";
-      pinInput = "";
-      pinConfirm = "";
-      pinStep = 1;
-      return;
-    }
+    if (pinInput.length !== 4) return;
 
     isPasswordSubmitting = true;
     try {
       await invoke("set_password", { password: pinInput });
       hasPassword = true;
+      currentPassword = pinInput;
       if (!passwordEnabled) {
         await invoke("set_password_enabled", { enabled: true });
         passwordEnabled = true;
@@ -345,8 +328,6 @@
     } catch (e) {
       passwordErrorMsg = "设置密码失败: " + e;
       pinInput = "";
-      pinConfirm = "";
-      pinStep = 1;
     } finally {
       isPasswordSubmitting = false;
     }
@@ -359,6 +340,7 @@
       const result = await invoke("verify_password_cmd", { password: oldPinInput });
       if (result) {
         pinStep = 2;
+        pinInput = "";
         passwordErrorMsg = "";
       } else {
         passwordErrorMsg = "原密码错误";
@@ -374,18 +356,17 @@
 
   async function generateRandomPwd() {
     try {
-      generatedPassword = await invoke("generate_random_password");
+      previewPassword = await invoke("generate_random_password");
+      pinInput = previewPassword;
+      passwordErrorMsg = "";
     } catch (e) {
       passwordErrorMsg = "生成密码失败: " + e;
     }
   }
 
-  async function useGeneratedPassword() {
-    if (!generatedPassword) return;
-    pinInput = generatedPassword;
-    pinConfirm = "";
-    pinStep = 2;
-    passwordErrorMsg = "";
+  async function confirmPreviewPassword() {
+    if (!previewPassword) return;
+    await submitPasswordSet();
   }
 
   async function resetPasswordAction() {
@@ -398,6 +379,7 @@
       await invoke("reset_password");
       passwordEnabled = false;
       hasPassword = false;
+      currentPassword = "";
       closePasswordModal();
     } catch (e) {
       passwordErrorMsg = "重置密码失败: " + e;
@@ -413,9 +395,7 @@
   });
 
   let currentPinDisplay = $derived(
-    pinStep === 1 && passwordModalMode === "change" ? oldPinInput
-      : pinStep === 1 ? pinInput
-      : pinConfirm
+    pinStep === 1 && passwordModalMode === "change" ? oldPinInput : pinInput
   );
 
   function handlePasswordKeydown(e) {
@@ -485,10 +465,8 @@
         <div class="modal-body">
           {#if passwordModalMode === "change" && pinStep === 1}
             <div class="pin-step-label">请输入原密码</div>
-          {:else if pinStep === 1 && (passwordModalMode === "set" || passwordModalMode === "change")}
+          {:else if passwordModalMode === "set" || (passwordModalMode === "change" && pinStep === 2)}
             <div class="pin-step-label">请输入4位数字密码</div>
-          {:else if pinStep === 2}
-            <div class="pin-step-label">请再次输入密码确认</div>
           {:else if passwordModalMode === "verify"}
             <div class="pin-step-label">请输入密码</div>
           {/if}
@@ -503,14 +481,6 @@
             <div class="pin-error">{passwordErrorMsg}</div>
           {:else if isPasswordSubmitting}
             <div class="pin-loading">验证中...</div>
-          {/if}
-
-          {#if generatedPassword && pinStep === 1}
-            <div class="generated-pwd-box">
-              <span class="generated-pwd-label">随机密码:</span>
-              <span class="generated-pwd-value">{generatedPassword}</span>
-              <button class="btn-use-pwd" onclick={useGeneratedPassword}>使用此密码</button>
-            </div>
           {/if}
 
           <div class="numpad">
@@ -534,13 +504,23 @@
             </button>
           {/if}
 
-          {#if (passwordModalMode === "set" || passwordModalMode === "change") && pinStep === 1 && !generatedPassword}
-            <button class="btn btn-secondary modal-action-btn" onclick={generateRandomPwd}>
-              随机生成密码
-            </button>
+          {#if (passwordModalMode === "set" || (passwordModalMode === "change" && pinStep === 2))}
+            <div class="random-pwd-section">
+              <button class="btn btn-secondary" onclick={generateRandomPwd} disabled={isPasswordSubmitting}>
+                🎲 随机生成
+              </button>
+              {#if previewPassword}
+                <div class="preview-pwd-box">
+                  <span class="preview-pwd-value">{previewPassword}</span>
+                  <button class="btn btn-sm btn-primary" onclick={confirmPreviewPassword} disabled={isPasswordSubmitting}>
+                    确认使用
+                  </button>
+                </div>
+              {/if}
+            </div>
           {/if}
 
-          {#if passwordModalMode === "change" && pinStep !== 1}
+          {#if passwordModalMode === "change" && pinStep === 2}
             <div class="modal-actions">
               {#if showResetConfirm}
                 <div class="reset-confirm">
@@ -656,6 +636,12 @@
           <button class="btn btn-sm" class:btn-protection-on={passwordEnabled} class:btn-protection-off={!passwordEnabled} onclick={togglePasswordProtection}>
             {passwordEnabled ? "关闭保护" : "开启保护"}
           </button>
+          {#if passwordEnabled && currentPassword}
+            <div class="current-password-display">
+              <span class="pwd-label">密码:</span>
+              <span class="pwd-value">{currentPassword}</span>
+            </div>
+          {/if}
           {#if hasPassword}
             <button class="btn btn-sm btn-manage-pwd" onclick={() => openPasswordModal("change")}>
               管理密码
@@ -1048,6 +1034,28 @@
 
   .btn-manage-pwd:hover:not(:disabled) {
     background: rgba(251, 191, 36, 0.35);
+  }
+
+  .current-password-display {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: rgba(96, 165, 250, 0.15);
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    border-radius: 8px;
+  }
+
+  .pwd-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .pwd-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #60a5fa;
+    letter-spacing: 6px;
   }
 
   .folder-path {
@@ -1638,44 +1646,30 @@
     min-height: 20px;
   }
 
-  .generated-pwd-box {
+  .random-pwd-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .preview-pwd-box {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
+    gap: 10px;
     padding: 10px 16px;
     background: rgba(34, 197, 94, 0.1);
-    border: 1px solid rgba(34, 197, 94, 0.2);
-    border-radius: 8px;
-    margin-bottom: 12px;
-    font-size: 13px;
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    border-radius: 10px;
+    width: 100%;
+    justify-content: center;
   }
 
-  .generated-pwd-label {
-    color: rgba(255, 255, 255, 0.6);
-  }
-
-  .generated-pwd-value {
+  .preview-pwd-value {
     color: #4ade80;
-    font-weight: 600;
-    font-size: 16px;
-    letter-spacing: 4px;
-  }
-
-  .btn-use-pwd {
-    padding: 4px 10px;
-    background: rgba(34, 197, 94, 0.2);
-    border: 1px solid rgba(34, 197, 94, 0.4);
-    color: #4ade80;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-  }
-
-  .btn-use-pwd:hover {
-    background: rgba(34, 197, 94, 0.35);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 8px;
   }
 
   .numpad {
@@ -1724,12 +1718,6 @@
   }
 
   .modal-submit-btn {
-    width: 100%;
-    justify-content: center;
-    margin-top: 4px;
-  }
-
-  .modal-action-btn {
     width: 100%;
     justify-content: center;
     margin-top: 4px;
