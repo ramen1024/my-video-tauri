@@ -52,3 +52,10 @@ impl From<std::io::Error> for AppError {
         AppError::IoError(err.to_string())
     }
 }
+
+// 从 serde_json::Error 自动转换
+impl From<serde_json::Error> for AppError {
+    fn from(err: serde_json::Error) -> Self {
+        AppError::IoError(format!("JSON 序列化错误: {}", err))
+    }
+}

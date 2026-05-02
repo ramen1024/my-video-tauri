@@ -49,7 +49,7 @@ pub fn is_root_directory(path: &Path) -> bool {
 /// 获取本机所有可用的 IP 地址
 ///
 /// # 实现方式
-/// Windows: 执行 ipconfig 命令并解析输出
+/// Windows: 执行 ipconfig 命令并解析输出（支持中英文 locale）
 ///
 /// # 返回
 /// IP 地址列表，过滤掉 127.x.x.x 回环地址
@@ -64,8 +64,11 @@ pub fn get_local_ips() -> Vec<String> {
         if let Ok(output) = output {
             let output_str = String::from_utf8_lossy(&output.stdout);
             for line in output_str.lines() {
-                if line.contains("IPv4") && line.contains(":") {
-                    if let Some(ip) = line.split(':').nth(1) {
+                let lower_line = line.to_lowercase();
+                if (lower_line.contains("ipv4") || lower_line.contains("ip address"))
+                    && line.contains(':')
+                {
+                    if let Some(ip) = line.split(':').last() {
                         let ip = ip.trim();
                         if !ip.is_empty() && !ip.starts_with("127") {
                             ips.push(ip.to_string());
@@ -81,7 +84,6 @@ pub fn get_local_ips() -> Vec<String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // 非 Windows 平台暂返回默认值
         vec!["127.0.0.1".to_string()]
     }
 }
@@ -135,16 +137,4 @@ pub fn sanitize_video_path(base: &Path, requested: &str) -> Option<std::path::Pa
         );
         None
     }
-}
-
-/// 格式化文件大小
-#[allow(dead_code)]
-pub fn format_size(bytes: u64) -> String {
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-    let k = 1024.0;
-    let sizes = ["B", "KB", "MB", "GB", "TB"];
-    let i = (bytes as f64).log(k).floor() as i32;
-    format!("{:.2} {}", bytes as f64 / k.powi(i), sizes[i as usize])
 }

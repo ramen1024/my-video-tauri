@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// 视频文件信息结构体
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct VideoFile {
     /// 文件名（不含路径）
     pub name: String,
@@ -19,7 +19,7 @@ pub struct VideoFile {
 
 /// 共享服务器信息结构体
 /// 返回给前端，包含服务器地址和视频列表
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub struct ShareServerInfo {
     /// 本机所有可用的 IP 地址列表
     pub ips: Vec<String>,
