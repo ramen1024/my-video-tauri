@@ -11,7 +11,3 @@ export async function startShareServer(
 export async function stopShareServer(): Promise<void> {
   await invoke("stop_share_server");
 }
-
-export async function getServerStatus(): Promise<boolean> {
-  return await invoke("get_server_status");
-}

@@ -12,6 +12,7 @@
   import VideoTable from "$lib/components/VideoTable.svelte";
   import SharePanel from "$lib/components/SharePanel.svelte";
   import PasswordPanel from "$lib/components/PasswordPanel.svelte";
+  import "$lib/styles/buttons.css";
 
   const DEFAULT_SHARE_PORT = 6008;
 
@@ -161,12 +162,6 @@
 </main>
 
 <style>
-  :global(*) { margin: 0; padding: 0; box-sizing: border-box; }
-  :global(body) {
-    font-family: "Segoe UI", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #0f172a; color: #ffffff; overflow: hidden; min-height: 100vh;
-  }
-
   .app {
     display: flex; flex-direction: column; height: 100vh; padding: 16px;
     position: relative; background: transparent;
@@ -209,14 +204,4 @@
   }
   .empty-state svg { margin-bottom: 12px; opacity: .4; color: rgba(255,255,255,.5); }
   .empty-state p { font-size: 13px; }
-
-  .btn {
-    display: flex; align-items: center; gap: 6px; padding: 10px 18px;
-    border: 1px solid rgba(255,255,255,.15); font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all .2s ease; background: rgba(255,255,255,.08);
-    color: #fff; border-radius: 10px;
-  }
-  .btn:hover:not(:disabled) { background: rgba(255,255,255,.14); transform: translateY(-1px); }
-  .btn-danger { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
-  .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,.35); color: #fecaca; }
 </style>

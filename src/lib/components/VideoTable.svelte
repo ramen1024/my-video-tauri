@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import type { VideoFile, SortField, SortDirection } from "$lib/types";
   import { formatFileSize, isSupportedFormat } from "$lib/utils/format";
 
@@ -12,7 +13,7 @@
   let sortField = $state<SortField>("name");
   let sortDirection = $state<SortDirection>("asc");
   let searchTerm = $state("");
-  let debounceTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let debouncedSearch = $state("");
 
   function handleSearchInput(e: Event) {
@@ -21,6 +22,10 @@
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => { debouncedSearch = value; }, 200);
   }
+
+  onDestroy(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+  });
 
   function toggleSort(field: SortField) {
     if (sortField === field) {

@@ -47,7 +47,13 @@ pub fn scan_videos(folder_path: String) -> Result<(), AppError> {
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_file())
+        .filter(|e| {
+            if !e.file_type().is_file() {
+                return false;
+            }
+            let ext = e.path().extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+            matches!(ext, Some(ref e) if VIDEO_EXTENSIONS.contains(e.as_str()))
+        })
         .collect();
 
     if CANCEL_SCAN_FLAG.load(Ordering::Relaxed) {
@@ -62,17 +68,12 @@ pub fn scan_videos(folder_path: String) -> Result<(), AppError> {
             }
 
             let path = entry.path();
-
             let ext_lower = path
                 .extension()
                 .and_then(|e| e.to_str())
                 .map(|e| e.to_lowercase())?;
 
-            if !VIDEO_EXTENSIONS.contains(ext_lower.as_str()) {
-                return None;
-            }
-
-            let metadata = fs::metadata(path).ok()?;
+            let metadata = entry.metadata().ok().or_else(|| fs::metadata(path).ok())?;
             let size = metadata.len();
 
             if size < 1_048_576 {
@@ -137,9 +138,8 @@ pub fn play_video(file_path: String) -> Result<(), AppError> {
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
-    let allowed_extensions = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg"];
     match ext {
-        Some(ref e) if allowed_extensions.contains(&e.as_str()) => {}
+        Some(ref e) if VIDEO_EXTENSIONS.contains(e.as_str()) => {}
         _ => return Err(AppError::InvalidPath("不允许打开非视频文件".to_string())),
     }
 

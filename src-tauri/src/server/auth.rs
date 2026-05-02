@@ -2,11 +2,27 @@ use std::io::Read;
 
 use crate::password;
 
+const MAX_BODY_SIZE: u64 = 1024;
+
 pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<dyn Read + Send>> {
+    password::cleanup_expired_sessions();
+
+    let content_length = request.body_length().unwrap_or(0) as u64;
+
+    if content_length > MAX_BODY_SIZE {
+        return super::response::json_response(
+            413,
+            r#"{"success": false, "message": "请求体过大"}"#,
+        );
+    }
+
     let mut body = String::new();
-    if let Some(len) = request.body_length() {
-        let mut limited = request.as_reader().take(len as u64);
-        let _ = limited.read_to_string(&mut body);
+    let mut limited = request.as_reader().take(content_length);
+    if limited.read_to_string(&mut body).is_err() {
+        return super::response::json_response(
+            400,
+            r#"{"success": false, "message": "读取请求体失败"}"#,
+        );
     }
 
     let ip = request.remote_addr().map(|a| a.ip().to_string()).unwrap_or_default();

@@ -19,7 +19,9 @@
   let maskedIndices = $state<Set<number>>(new Set());
   let pwdSuccess = $state(false);
 
-  let { enabled: passwordEnabled, has_password: hasPassword, password: currentPassword } = $derived(passwordStatus);
+  let passwordEnabled = $derived(passwordStatus.enabled);
+  let hasPassword = $derived(passwordStatus.has_password);
+  let currentPassword = $derived(passwordStatus.password);
 
   async function toggleProtection() {
     if (!hasPassword && !passwordEnabled) {

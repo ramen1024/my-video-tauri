@@ -95,13 +95,4 @@
     font-size: 12px; color: rgba(255,255,255,.5); padding: 10px 14px;
     background: rgba(239,68,68,.06); border: 1px solid rgba(239,68,68,.12); border-radius: 8px;
   }
-  .btn {
-    display: flex; align-items: center; gap: 6px; padding: 10px 18px;
-    border: 1px solid rgba(255,255,255,.15); font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all .2s ease; background: rgba(255,255,255,.08);
-    color: #fff; border-radius: 10px;
-  }
-  .btn:hover:not(:disabled) { background: rgba(255,255,255,.14); transform: translateY(-1px); }
-  .btn-danger { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
-  .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,.35); color: #fecaca; }
 </style>

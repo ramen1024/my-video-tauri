@@ -39,7 +39,6 @@ pub fn handle_video_request(
     let mut has_range = false;
 
     if let Some(range_value) = range_header {
-        has_range = true;
         if range_value.starts_with("bytes=") {
             let parts: Vec<&str> = range_value[6..].split('-').collect();
             if let Some(start) = parts.first() {
@@ -52,6 +51,13 @@ pub fn handle_video_request(
                     range_end = end.parse().unwrap_or(file_size.saturating_sub(1));
                 }
             }
+
+            if range_start <= range_end && range_start < file_size {
+                has_range = true;
+            } else {
+                range_start = 0;
+                range_end = file_size.saturating_sub(1);
+            }
         }
     }
 
@@ -63,29 +69,39 @@ pub fn handle_video_request(
     }
 
     let content_type = match video_path.extension().and_then(|e| e.to_str()) {
-        Some("mp4") => "video/mp4",
+        Some("mp4" | "m4v") => "video/mp4",
         Some("webm") => "video/webm",
         Some("mkv") => "video/x-matroska",
         Some("avi") => "video/x-msvideo",
         Some("mov") => "video/quicktime",
+        Some("wmv") => "video/x-ms-wmv",
+        Some("flv") => "video/x-flv",
+        Some("mpg" | "mpeg") => "video/mpeg",
         _ => "application/octet-stream",
     };
 
     let limited_reader = file.take(content_length);
     let boxed_reader: Box<dyn Read + Send> = Box::new(limited_reader);
 
-    tiny_http::Response::new(
-        if has_range { 206 } else { 200 }.into(),
-        vec![
-            tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),
-            tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap(),
+    let mut headers = vec![
+        tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),
+        tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap(),
+        tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap(),
+        tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap(),
+    ];
+
+    if has_range {
+        headers.push(
             tiny_http::Header::from_bytes(
                 &b"Content-Range"[..],
                 format!("bytes {}-{}/{}", range_start, range_end, file_size).as_bytes(),
             ).unwrap(),
-            tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap(),
-            tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap(),
-        ],
+        );
+    }
+
+    tiny_http::Response::new(
+        if has_range { 206 } else { 200 }.into(),
+        headers,
         boxed_reader,
         Some(content_length as usize),
         None,

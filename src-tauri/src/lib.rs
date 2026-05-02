@@ -14,19 +14,19 @@ pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
 pub use password::PasswordStatus;
 
-pub(crate) static CANCEL_SCAN_FLAG: Lazy<Arc<AtomicBool>> =
-    Lazy::new(|| Arc::new(AtomicBool::new(false)));
+pub(crate) static CANCEL_SCAN_FLAG: Lazy<AtomicBool> =
+    Lazy::new(|| AtomicBool::new(false));
 
-pub(crate) static SHARED_VIDEOS: Lazy<Arc<RwLock<Vec<VideoFile>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(Vec::new())));
+pub(crate) static SHARED_VIDEOS: Lazy<RwLock<Vec<VideoFile>>> =
+    Lazy::new(|| RwLock::new(Vec::new()));
 
-pub(crate) static SHARED_FOLDER_PATH: Lazy<Arc<RwLock<String>>> =
-    Lazy::new(|| Arc::new(RwLock::new(String::new())));
+pub(crate) static SHARED_FOLDER_PATH: Lazy<RwLock<String>> =
+    Lazy::new(|| RwLock::new(String::new()));
 
 pub(crate) static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-pub(crate) static SERVER_HANDLE: Lazy<Arc<RwLock<Option<Arc<tiny_http::Server>>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(None)));
+pub(crate) static SERVER_HANDLE: Lazy<RwLock<Option<Arc<tiny_http::Server>>>> =
+    Lazy::new(|| RwLock::new(None));
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -36,7 +36,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             commands::video::scan_videos,
             commands::video::get_shared_videos,

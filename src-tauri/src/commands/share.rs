@@ -22,12 +22,25 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
     let videos = SHARED_VIDEOS.read().clone();
     let ips = get_local_ips();
 
-    SERVER_RUNNING.store(true, Ordering::SeqCst);
-
     let ips_clone = ips.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+
     std::thread::spawn(move || {
-        server::start_http_server(&ips_clone, port);
+        let result = server::start_http_server(&ips_clone, port);
+        let _ = tx.send(result);
     });
+
+    match rx.recv() {
+        Ok(Ok(())) => {
+            SERVER_RUNNING.store(true, Ordering::SeqCst);
+        }
+        Ok(Err(e)) => {
+            return Err(AppError::IoError(e));
+        }
+        Err(_) => {
+            return Err(AppError::IoError("服务器线程通信失败".to_string()));
+        }
+    }
 
     Ok(ShareServerInfo { ips, port, videos })
 }
