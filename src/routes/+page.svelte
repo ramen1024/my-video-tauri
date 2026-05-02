@@ -1,19 +1,34 @@
-<script>
+<script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
   import { convertFileSrc } from "@tauri-apps/api/core";
   // @ts-ignore
   import qrcode from "qrcode-generator";
 
-  let videos = $state([]);
+  interface VideoFile {
+    name: string;
+    path: string;
+    relative_path: string;
+    size: number;
+    modified: string | null;
+    extension: string;
+  }
+
+  interface ShareServerInfo {
+    ips: string[];
+    port: number;
+    videos: VideoFile[];
+  }
+
+  let videos = $state<VideoFile[]>([]);
   let currentFolder = $state("");
   let isScanning = $state(false);
   let errorMsg = $state("");
-  let sortField = $state("name");
-  let sortDirection = $state("asc");
-  let currentVideo = $state(null);
+  let sortField = $state<"name" | "size" | "modified">("name");
+  let sortDirection = $state<"asc" | "desc">("asc");
+  let currentVideo = $state<VideoFile | null>(null);
   let isSharing = $state(false);
-  let shareInfo = $state(null);
+  let shareInfo = $state<ShareServerInfo | null>(null);
   let isStartingShare = $state(false);
   let qrCodeDataUrl = $state("");
   let selectedIp = $state("");
@@ -28,13 +43,13 @@
   let pwdSubmitting = $state(false);
   let pwdCopied = $state(false);
   let popIndex = $state(-1);
-  let maskedIndices = $state(new Set());
+  let maskedIndices = $state<Set<number>>(new Set());
   let pwdSuccess = $state(false);
 
   const supportedExtensions = ["mp4", "webm", "ogg", "m4v"];
   const defaultSharePort = 6008;
 
-  function generateQRCode(ip, port) {
+  function generateQRCode(ip: string, port: number) {
     try {
       const url = `http://${ip}:${port}`;
       console.log("Generating QR code for:", url);
@@ -47,18 +62,18 @@
     }
   }
 
-  function selectIp(ip) {
+  function selectIp(ip: string) {
     selectedIp = ip;
     if (shareInfo) {
       generateQRCode(ip, shareInfo.port);
     }
   }
 
-  function isSupportedFormat(ext) {
+  function isSupportedFormat(ext: string) {
     return supportedExtensions.includes(ext.toLowerCase());
   }
 
-  function formatFileSize(bytes) {
+  function formatFileSize(bytes: number) {
     if (bytes === 0) return "0 B";
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB", "TB"];
@@ -66,8 +81,8 @@
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
-  function sortVideos(list, field, direction) {
-    return [...list].sort((a, b) => {
+  function sortVideos(list: VideoFile[], field: keyof VideoFile, direction: string) {
+    return [...list].sort((a: VideoFile, b: VideoFile) => {
       let valA = a[field];
       let valB = b[field];
 
@@ -96,7 +111,7 @@
       : sortedVideos
   );
 
-  function toggleSort(field) {
+  function toggleSort(field: "name" | "size" | "modified") {
     if (sortField === field) {
       sortDirection = sortDirection === "asc" ? "desc" : "asc";
     } else {
@@ -148,7 +163,7 @@
     invoke("cancel_scan");
   }
 
-  function playVideo(video) {
+  function playVideo(video: VideoFile) {
     if (isSupportedFormat(video.extension)) {
       currentVideo = video;
     } else {
@@ -162,7 +177,7 @@
     currentVideo = null;
   }
 
-  function getVideoSrc(videoPath) {
+  function getVideoSrc(videoPath: string) {
     const normalizedPath = videoPath.replace(/\\/g, "/");
     return convertFileSrc(normalizedPath);
   }
@@ -180,7 +195,7 @@
       const result = await invoke("start_share_server", { 
         folderPath: currentFolder,
         port: defaultSharePort
-      });
+      }) as ShareServerInfo;
       shareInfo = result;
       isSharing = true;
       if (result.ips && result.ips.length > 0) {
@@ -208,7 +223,7 @@
 
   async function loadPasswordStatus() {
     try {
-      const status = await invoke("get_password_status");
+      const status = await invoke("get_password_status") as { enabled: boolean; has_password: boolean; password: string | null };
       passwordEnabled = status.enabled;
       hasPassword = status.has_password;
       currentPassword = status.password || "";
@@ -242,7 +257,7 @@
 
   async function randomGenerateAndApply() {
     try {
-      const newPwd = await invoke("generate_random_password");
+      const newPwd = await invoke("generate_random_password") as string;
       await invoke("set_password", { password: newPwd });
       currentPassword = newPwd;
       hasPassword = true;
@@ -257,7 +272,7 @@
     }
   }
 
-  function handleNumpadDigit(digit) {
+  function handleNumpadDigit(digit: string) {
     if (pwdSubmitting || pwdInput.length >= 4) return;
     pwdErrorMsg = "";
     pwdSuccess = false;
@@ -281,7 +296,7 @@
     pwdErrorMsg = "";
     pwdSuccess = false;
     pwdInput = pwdInput.slice(0, -1);
-    const newMasked = new Set();
+    const newMasked = new Set<number>();
     for (let i = 0; i < pwdInput.length; i++) newMasked.add(i);
     maskedIndices = newMasked;
   }
