@@ -1,7 +1,9 @@
+use std::sync::LazyLock;
+
+use parking_lot::{Mutex, RwLock};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use parking_lot::RwLock;
-use once_cell::sync::Lazy;
+use tauri::Manager;
 
 mod error;
 mod models;
@@ -14,28 +16,41 @@ pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
 pub use password::PasswordStatus;
 
-pub(crate) static CANCEL_SCAN_FLAG: Lazy<AtomicBool> =
-    Lazy::new(|| AtomicBool::new(false));
+pub(crate) static CANCEL_SCAN_FLAG: LazyLock<AtomicBool> =
+    LazyLock::new(|| AtomicBool::new(false));
 
-pub(crate) static SHARED_VIDEOS: Lazy<RwLock<Vec<VideoFile>>> =
-    Lazy::new(|| RwLock::new(Vec::new()));
+pub(crate) static SHARED_VIDEOS: LazyLock<RwLock<Arc<Vec<VideoFile>>>> =
+    LazyLock::new(|| RwLock::new(Arc::new(Vec::new())));
 
-pub(crate) static SHARED_FOLDER_PATH: Lazy<RwLock<String>> =
-    Lazy::new(|| RwLock::new(String::new()));
+pub(crate) static SHARED_FOLDER_PATH: LazyLock<RwLock<String>> =
+    LazyLock::new(|| RwLock::new(String::new()));
 
-pub(crate) static SERVER_RUNNING: AtomicBool = AtomicBool::new(false);
+pub(crate) static SERVER_STATE: LazyLock<Mutex<ServerState>> =
+    LazyLock::new(|| Mutex::new(ServerState::Stopped));
 
-pub(crate) static SERVER_HANDLE: Lazy<RwLock<Option<Arc<tiny_http::Server>>>> =
-    Lazy::new(|| RwLock::new(None));
+pub(crate) static SERVER_HANDLE: LazyLock<RwLock<Option<Arc<tiny_http::Server>>>> =
+    LazyLock::new(|| RwLock::new(None));
+
+pub(crate) enum ServerState {
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    password::load_password_config();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            if let Ok(data_dir) = app.path().app_data_dir() {
+                password::set_config_dir(data_dir);
+            }
+            password::load_password_config();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::video::scan_videos,
             commands::video::get_shared_videos,

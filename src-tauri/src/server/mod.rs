@@ -3,10 +3,9 @@ mod response;
 mod auth;
 mod video_serve;
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::SERVER_RUNNING;
+use crate::{SERVER_STATE, ServerState};
 
 const WORKER_THREADS: usize = 4;
 
@@ -25,7 +24,11 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(), String> {
         let ips = ips.clone();
         std::thread::spawn(move || {
             for mut request in server.incoming_requests() {
-                if !SERVER_RUNNING.load(Ordering::SeqCst) {
+                let running = {
+                    let state = SERVER_STATE.lock();
+                    matches!(*state, ServerState::Running)
+                };
+                if !running {
                     break;
                 }
                 let resp = handler::handle_request(&mut request, &ips, port);

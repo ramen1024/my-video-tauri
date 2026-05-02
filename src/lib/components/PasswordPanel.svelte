@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getPasswordStatus, setPasswordEnabled, setPassword, generateRandomPassword, resetPassword } from "$lib/services/password";
   import type { PasswordStatus } from "$lib/types";
+  import { parseAppError } from "$lib/types";
 
   interface Props {
     passwordStatus: PasswordStatus;
@@ -32,7 +33,7 @@
       await setPasswordEnabled(!passwordEnabled);
       onStatusChange({ ...passwordStatus, enabled: !passwordEnabled });
     } catch (e) {
-      onError("切换密码保护失败: " + e);
+      onError("切换密码保护失败: " + parseAppError(e));
     }
   }
 
@@ -42,7 +43,7 @@
       pwdCopied = true;
       setTimeout(() => { pwdCopied = false; }, 1500);
     } catch (e) {
-      onError("复制失败: " + e);
+      onError("复制失败: " + parseAppError(e));
     }
   }
 
@@ -58,7 +59,7 @@
       pwdInput = "";
       pwdErrorMsg = "";
     } catch (e) {
-      pwdErrorMsg = "设置密码失败: " + e;
+      pwdErrorMsg = "设置密码失败: " + parseAppError(e);
     }
   }
 
@@ -118,7 +119,7 @@
         pwdPanelExpanded = false;
       }, 1200);
     } catch (e) {
-      pwdErrorMsg = "设置失败: " + e;
+      pwdErrorMsg = "设置失败: " + parseAppError(e);
       pwdInput = "";
       maskedIndices = new Set();
     } finally {
@@ -136,7 +137,7 @@
       popIndex = -1;
       pwdSuccess = false;
     } catch (e) {
-      onError("清除密码失败: " + e);
+      onError("清除密码失败: " + parseAppError(e));
     }
   }
 

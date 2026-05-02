@@ -1,5 +1,8 @@
+use std::sync::LazyLock;
+
 use parking_lot::RwLock;
 use rand::Rng;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,18 +10,25 @@ use std::sync::Arc;
 
 static PASSWORD_ENABLED: AtomicBool = AtomicBool::new(false);
 
-static PASSWORD_PLAIN: once_cell::sync::Lazy<Arc<RwLock<Option<String>>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(None)));
+static PASSWORD_PLAIN: LazyLock<Arc<RwLock<Option<String>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(None)));
 
-static SESSIONS: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, i64>>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static PASSWORD_HASH: LazyLock<Arc<RwLock<Option<String>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(None)));
 
-static FAILED_ATTEMPTS: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+static CONFIG_DIR: LazyLock<RwLock<Option<std::path::PathBuf>>> =
+    LazyLock::new(|| RwLock::new(None));
+
+static SESSIONS: LazyLock<Arc<RwLock<HashMap<String, i64>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+static FAILED_ATTEMPTS: LazyLock<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 const SESSION_DURATION_SECS: i64 = 3600;
 const MAX_FAILED_ATTEMPTS: u32 = 3;
 const LOCK_DURATION_SECS: i64 = 30;
+const BCRYPT_COST: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordStatus {
@@ -29,7 +39,7 @@ pub struct PasswordStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PasswordConfig {
-    password: Option<String>,
+    password_hash: Option<String>,
     enabled: bool,
 }
 
@@ -44,18 +54,31 @@ fn current_timestamp() -> i64 {
 }
 
 fn config_path() -> std::path::PathBuf {
+    let dir_guard = CONFIG_DIR.read();
+    if let Some(dir) = dir_guard.as_ref() {
+        let path = dir.join("password_config.json");
+        if !dir.exists() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        return path;
+    }
     let mut path = std::env::current_exe().unwrap_or_default();
     path.pop();
     path.join("password_config.json")
+}
+
+pub fn set_config_dir(path: std::path::PathBuf) {
+    let mut dir = CONFIG_DIR.write();
+    *dir = Some(path);
 }
 
 pub fn load_password_config() {
     let path = config_path();
     if let Ok(content) = std::fs::read_to_string(&path) {
         if let Ok(config) = serde_json::from_str::<PasswordConfig>(&content) {
-            if let Some(pwd) = config.password {
-                let mut stored = PASSWORD_PLAIN.write();
-                *stored = Some(pwd);
+            if let Some(hash) = config.password_hash {
+                let mut stored_hash = PASSWORD_HASH.write();
+                *stored_hash = Some(hash);
             }
             PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
         }
@@ -64,7 +87,7 @@ pub fn load_password_config() {
 
 fn save_password_config() {
     let config = PasswordConfig {
-        password: PASSWORD_PLAIN.read().clone(),
+        password_hash: PASSWORD_HASH.read().clone(),
         enabled: PASSWORD_ENABLED.load(Ordering::SeqCst),
     };
     if let Ok(json) = serde_json::to_string_pretty(&config) {
@@ -85,7 +108,7 @@ pub fn set_password_enabled(enabled: bool) {
 }
 
 pub fn has_password_set() -> bool {
-    PASSWORD_PLAIN.read().is_some()
+    PASSWORD_PLAIN.read().is_some() || PASSWORD_HASH.read().is_some()
 }
 
 pub fn get_password_status() -> PasswordStatus {
@@ -97,8 +120,8 @@ pub fn get_password_status() -> PasswordStatus {
 }
 
 pub fn generate_random_password() -> String {
-    let mut rng = rand::thread_rng();
-    format!("{:04}", rng.gen_range(0..10000))
+    let mut rng = rand::rng();
+    format!("{:04}", rng.random_range(0..10000))
 }
 
 pub fn set_password(password: &str) -> Result<(), String> {
@@ -109,19 +132,35 @@ pub fn set_password(password: &str) -> Result<(), String> {
         return Err("密码只能包含数字0-9".to_string());
     }
 
+    let hash = bcrypt::hash(password, BCRYPT_COST)
+        .map_err(|e| format!("密码哈希失败: {}", e))?;
+
     {
         let mut stored = PASSWORD_PLAIN.write();
         *stored = Some(password.to_string());
+    }
+    {
+        let mut stored_hash = PASSWORD_HASH.write();
+        *stored_hash = Some(hash);
     }
     save_password_config();
     Ok(())
 }
 
 pub fn verify_password(password: &str) -> Result<bool, String> {
-    let stored = PASSWORD_PLAIN.read();
-    match stored.as_ref() {
-        Some(stored_pwd) => Ok(password == stored_pwd),
-        None => Err("未设置密码".to_string()),
+    let hash_guard = PASSWORD_HASH.read();
+    match hash_guard.as_ref() {
+        Some(hash) => {
+            bcrypt::verify(password, hash)
+                .map_err(|e| format!("密码验证失败: {}", e))
+        }
+        None => {
+            let plain_guard = PASSWORD_PLAIN.read();
+            match plain_guard.as_ref() {
+                Some(stored_pwd) => Ok(password == stored_pwd),
+                None => Err("未设置密码".to_string()),
+            }
+        }
     }
 }
 
@@ -129,10 +168,16 @@ pub fn reset_password() {
     {
         let mut stored = PASSWORD_PLAIN.write();
         *stored = None;
+    }
+    {
+        let mut stored_hash = PASSWORD_HASH.write();
+        *stored_hash = None;
+    }
+    {
         let mut sessions = SESSIONS.write();
         sessions.clear();
-        PASSWORD_ENABLED.store(false, Ordering::SeqCst);
     }
+    PASSWORD_ENABLED.store(false, Ordering::SeqCst);
     save_password_config();
 }
 
@@ -144,10 +189,10 @@ pub fn create_session() -> String {
 }
 
 fn generate_session_token() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     (0..32)
         .map(|_| {
-            let byte = rng.gen::<u8>();
+            let byte = rng.random::<u8>();
             format!("{:02x}", byte)
         })
         .collect()

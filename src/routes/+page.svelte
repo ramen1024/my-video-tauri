@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import type { VideoFile, ShareServerInfo, PasswordStatus } from "$lib/types";
+  import { parseAppError } from "$lib/types";
   import { isSupportedFormat } from "$lib/utils/format";
   import { scanVideos, getSharedVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
   import { startShareServer, stopShareServer } from "$lib/services/share";
@@ -35,7 +36,7 @@
         await doScan();
       }
     } catch (e) {
-      errorMsg = "选择文件夹失败: " + e;
+      errorMsg = "选择文件夹失败: " + parseAppError(e);
     }
   }
 
@@ -48,7 +49,7 @@
       await scanVideos(currentFolder);
       videos = await getSharedVideos();
     } catch (e) {
-      const msg = String(e);
+      const msg = parseAppError(e);
       if (msg.includes("扫描已取消")) {
         errorMsg = "扫描已取消";
       } else {
@@ -68,7 +69,7 @@
       currentVideo = video;
     } else {
       playVideoFile(video.path).catch(e => {
-        errorMsg = "无法播放该视频文件: " + e;
+        errorMsg = "无法播放该视频文件: " + parseAppError(e);
       });
     }
   }
@@ -82,7 +83,7 @@
       shareInfo = result;
       isSharing = true;
     } catch (e) {
-      errorMsg = "开启共享失败: " + e;
+      errorMsg = "开启共享失败: " + parseAppError(e);
     } finally {
       isStartingShare = false;
     }
@@ -94,7 +95,7 @@
       isSharing = false;
       shareInfo = null;
     } catch (e) {
-      errorMsg = "停止共享失败: " + e;
+      errorMsg = "停止共享失败: " + parseAppError(e);
     }
   }
 

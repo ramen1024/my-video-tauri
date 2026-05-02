@@ -11,7 +11,7 @@ use crate::utils::{format_system_time, is_root_directory};
 use crate::{CANCEL_SCAN_FLAG, SHARED_VIDEOS, SHARED_FOLDER_PATH};
 
 use std::collections::HashSet;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 static VIDEO_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
@@ -23,7 +23,15 @@ static VIDEO_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
 });
 
 #[tauri::command]
-pub fn scan_videos(folder_path: String) -> Result<(), AppError> {
+pub async fn scan_videos(folder_path: String) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_videos_sync(folder_path)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))?
+}
+
+pub(crate) fn scan_videos_sync(folder_path: String) -> Result<(), AppError> {
     let path = Path::new(&folder_path);
 
     if !path.exists() {
@@ -112,7 +120,7 @@ pub fn scan_videos(folder_path: String) -> Result<(), AppError> {
     });
 
     let mut shared = SHARED_VIDEOS.write();
-    *shared = videos;
+    *shared = Arc::new(videos);
 
     let mut shared_path = SHARED_FOLDER_PATH.write();
     *shared_path = folder_path;
@@ -121,7 +129,7 @@ pub fn scan_videos(folder_path: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub fn get_shared_videos() -> Result<Vec<VideoFile>, AppError> {
+pub fn get_shared_videos() -> Result<Arc<Vec<VideoFile>>, AppError> {
     Ok(SHARED_VIDEOS.read().clone())
 }
 

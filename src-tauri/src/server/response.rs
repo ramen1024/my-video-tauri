@@ -25,7 +25,6 @@ pub fn json_response(status_code: u16, json: &str) -> tiny_http::Response<Box<dy
         vec![
             tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
             tiny_http::Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()).unwrap(),
-            tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap(),
         ],
         cursor,
         Some(len),

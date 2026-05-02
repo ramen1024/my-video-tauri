@@ -1,25 +1,37 @@
 use std::path::Path;
-use std::sync::atomic::Ordering;
 
 use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::utils::get_local_ips;
 use crate::server;
-use crate::{SERVER_RUNNING, SHARED_VIDEOS};
+use crate::{SERVER_STATE, SHARED_VIDEOS, ServerState, VideoFile};
 
 #[tauri::command]
 pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
-    if SERVER_RUNNING.load(Ordering::SeqCst) {
-        return Err(AppError::ServerAlreadyRunning);
+    {
+        let mut state = SERVER_STATE.lock();
+        match *state {
+            ServerState::Running | ServerState::Starting => {
+                return Err(AppError::ServerAlreadyRunning);
+            }
+            ServerState::Stopping => {
+                return Err(AppError::Other("服务器正在停止中，请稍后".to_string()));
+            }
+            ServerState::Stopped => {
+                *state = ServerState::Starting;
+            }
+        }
     }
 
     let path = Path::new(&folder_path);
     if !path.exists() || !path.is_dir() {
+        let mut state = SERVER_STATE.lock();
+        *state = ServerState::Stopped;
         return Err(AppError::InvalidPath("无效的文件夹路径".to_string()));
     }
 
-    super::video::scan_videos(folder_path.clone())?;
-    let videos = SHARED_VIDEOS.read().clone();
+    super::video::scan_videos_sync(folder_path.clone())?;
+    let videos: Vec<VideoFile> = SHARED_VIDEOS.read().clone().to_vec();
     let ips = get_local_ips();
 
     let ips_clone = ips.clone();
@@ -32,12 +44,17 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
 
     match rx.recv() {
         Ok(Ok(())) => {
-            SERVER_RUNNING.store(true, Ordering::SeqCst);
+            let mut state = SERVER_STATE.lock();
+            *state = ServerState::Running;
         }
         Ok(Err(e)) => {
+            let mut state = SERVER_STATE.lock();
+            *state = ServerState::Stopped;
             return Err(AppError::IoError(e));
         }
         Err(_) => {
+            let mut state = SERVER_STATE.lock();
+            *state = ServerState::Stopped;
             return Err(AppError::IoError("服务器线程通信失败".to_string()));
         }
     }
@@ -47,12 +64,32 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
 
 #[tauri::command]
 pub fn stop_share_server() -> Result<(), AppError> {
-    SERVER_RUNNING.store(false, Ordering::SeqCst);
+    {
+        let mut state = SERVER_STATE.lock();
+        match *state {
+            ServerState::Stopped | ServerState::Stopping => {
+                return Err(AppError::ServerNotRunning);
+            }
+            ServerState::Starting => {
+                return Err(AppError::Other("服务器正在启动中，请稍后".to_string()));
+            }
+            ServerState::Running => {
+                *state = ServerState::Stopping;
+            }
+        }
+    }
+
     crate::SERVER_HANDLE.write().take().map(|s| s.unblock());
+
+    {
+        let mut state = SERVER_STATE.lock();
+        *state = ServerState::Stopped;
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub fn get_server_status() -> bool {
-    SERVER_RUNNING.load(Ordering::SeqCst)
+    matches!(*SERVER_STATE.lock(), ServerState::Running)
 }
