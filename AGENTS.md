@@ -55,7 +55,6 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - `qrcode-generator` is dynamically imported — don't add it as a top-level import
 - `html_template.html` and `login_template.html` are embedded via `include_str!` in server/handler.rs — paths are relative to that file
 - `capabilities/default.json` has broad `fs:allow-read-file` and `shell:allow-execute` permissions — be cautious when adding new capabilities
-- No `LICENSE` file exists despite `package.json` declaring MIT
 
 ## Windows-specific
 
