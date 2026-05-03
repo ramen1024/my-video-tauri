@@ -38,6 +38,10 @@
 
   let displayVideos = $derived.by(() => {
     let list = [...videos];
+    if (debouncedSearch.trim()) {
+      const term = debouncedSearch.toLowerCase();
+      list = list.filter(v => v.name.toLowerCase().includes(term));
+    }
     list.sort((a, b) => {
       let valA: string | number = a[sortField] ?? "";
       let valB: string | number = b[sortField] ?? "";
@@ -48,10 +52,6 @@
       if (valA > valB) return sortDirection === "asc" ? 1 : -1;
       return 0;
     });
-    if (debouncedSearch.trim()) {
-      const term = debouncedSearch.toLowerCase();
-      list = list.filter(v => v.name.toLowerCase().includes(term));
-    }
     return list;
   });
 </script>
@@ -90,7 +90,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each displayVideos as video}
+        {#each displayVideos as video (video.path)}
           <tr>
             <td class="col-play">
               <button class="play-icon" onclick={() => onPlay(video)} aria-label="播放视频">

@@ -6,6 +6,11 @@ use crate::utils::get_local_ips;
 use crate::server;
 use crate::{SERVER_HANDLE, SERVER_STATE, SERVER_THREADS, ServerState};
 
+fn set_server_state(state: ServerState) {
+    let mut s = SERVER_STATE.lock();
+    *s = state;
+}
+
 #[tauri::command]
 pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
     {
@@ -27,26 +32,24 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
 
     let path = Path::new(&folder_path);
     if !path.exists() || !path.is_dir() {
-        let mut state = SERVER_STATE.lock();
-        *state = ServerState::Stopped;
+        set_server_state(ServerState::Stopped);
         return Err(AppError::InvalidPath("无效的文件夹路径".to_string()));
     }
 
     let folder_path_clone = folder_path.clone();
-    let scan_result = tauri::async_runtime::spawn_blocking(move || {
+    let scan_result = match tauri::async_runtime::spawn_blocking(move || {
         super::video::scan_videos_sync(folder_path_clone)
-    })
-    .await
-    .map_err(|e| {
-        let mut state = SERVER_STATE.lock();
-        *state = ServerState::Stopped;
-        log::error!("[共享] 扫描任务执行失败: {}", e);
-        AppError::Other(format!("扫描任务执行失败: {}", e))
-    })?;
+    }).await {
+        Ok(res) => res,
+        Err(e) => {
+            set_server_state(ServerState::Stopped);
+            log::error!("[共享] 扫描任务执行失败: {}", e);
+            return Err(AppError::Other(format!("扫描任务执行失败: {}", e)));
+        }
+    };
 
     if let Err(e) = scan_result {
-        let mut state = SERVER_STATE.lock();
-        *state = ServerState::Stopped;
+        set_server_state(ServerState::Stopped);
         log::error!("[共享] 扫描失败: {}", e);
         return Err(e);
     }
@@ -62,23 +65,20 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
         let _ = tx.send(result);
     });
 
-    let server_result = tauri::async_runtime::spawn_blocking(move || {
+    let server_result = match tauri::async_runtime::spawn_blocking(move || {
         rx.recv_timeout(std::time::Duration::from_secs(10))
-    })
-    .await
-    .map_err(|e| {
-        let mut state = SERVER_STATE.lock();
-        *state = ServerState::Stopped;
-        log::error!("[共享] 等待服务器启动失败: {}", e);
-        AppError::Other(format!("等待服务器启动失败: {}", e))
-    })?;
+    }).await {
+        Ok(res) => res,
+        Err(e) => {
+            set_server_state(ServerState::Stopped);
+            log::error!("[共享] 等待服务器启动失败: {}", e);
+            return Err(AppError::Other(format!("等待服务器启动失败: {}", e)));
+        }
+    };
 
     match server_result {
         Ok(Ok((server_arc, handles))) => {
-            {
-                let mut state = SERVER_STATE.lock();
-                *state = ServerState::Running;
-            }
+            set_server_state(ServerState::Running);
             SERVER_HANDLE.write().replace(server_arc);
             let mut threads = SERVER_THREADS.write();
             *threads = handles;
@@ -86,14 +86,12 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
             Ok(ShareServerInfo { ips, port })
         }
         Ok(Err(e)) => {
-            let mut state = SERVER_STATE.lock();
-            *state = ServerState::Stopped;
+            set_server_state(ServerState::Stopped);
             log::error!("[共享] HTTP服务器启动失败: {}", e);
             Err(AppError::IoError(e))
         }
         Err(_) => {
-            let mut state = SERVER_STATE.lock();
-            *state = ServerState::Stopped;
+            set_server_state(ServerState::Stopped);
             log::error!("[共享] 服务器启动超时");
             Err(AppError::IoError("服务器启动超时".to_string()))
         }

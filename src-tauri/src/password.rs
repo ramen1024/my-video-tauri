@@ -49,18 +49,19 @@ fn current_timestamp() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-fn config_path() -> std::path::PathBuf {
+fn config_path() -> Result<std::path::PathBuf, String> {
     let dir_guard = CONFIG_DIR.read();
     if let Some(dir) = dir_guard.as_ref() {
         let path = dir.join("password_config.json");
         if !dir.exists() {
-            let _ = std::fs::create_dir_all(dir);
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("创建配置目录失败: {}", e))?;
         }
-        return path;
+        return Ok(path);
     }
     let mut path = std::env::current_exe().unwrap_or_default();
     path.pop();
-    path.join("password_config.json")
+    Ok(path.join("password_config.json"))
 }
 
 pub fn set_config_dir(path: std::path::PathBuf) {
@@ -69,15 +70,19 @@ pub fn set_config_dir(path: std::path::PathBuf) {
 }
 
 pub fn load_password_config() {
-    let path = config_path();
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(config) = serde_json::from_str::<PasswordConfig>(&content) {
-            if let Some(hash) = config.password_hash {
-                let mut stored_hash = PASSWORD_HASH.write();
-                *stored_hash = Some(hash);
+    match config_path() {
+        Ok(path) => {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(config) = serde_json::from_str::<PasswordConfig>(&content) {
+                    if let Some(hash) = config.password_hash {
+                        let mut stored_hash = PASSWORD_HASH.write();
+                        *stored_hash = Some(hash);
+                    }
+                    PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
+                }
             }
-            PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
         }
+        Err(e) => log::error!("[密码配置] 获取配置路径失败: {}", e),
     }
 }
 
@@ -87,9 +92,13 @@ fn save_password_config() {
         enabled: PASSWORD_ENABLED.load(Ordering::SeqCst),
     };
     if let Ok(json) = serde_json::to_string_pretty(&config) {
-        let path = config_path();
-        if let Err(e) = std::fs::write(&path, json) {
-            log::error!("[密码配置] 保存失败: {}", e);
+        match config_path() {
+            Ok(path) => {
+                if let Err(e) = std::fs::write(&path, json) {
+                    log::error!("[密码配置] 保存失败: {}", e);
+                }
+            }
+            Err(e) => log::error!("[密码配置] 获取配置路径失败: {}", e),
         }
     }
 }

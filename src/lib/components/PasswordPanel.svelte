@@ -36,6 +36,10 @@
   }
 
   async function copyPassword() {
+    if (!navigator.clipboard) {
+      onError("当前环境不支持自动复制，请手动复制密码");
+      return;
+    }
     try {
       await navigator.clipboard.writeText(knownPassword);
       pwdCopied = true;

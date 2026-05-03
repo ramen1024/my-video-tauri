@@ -12,19 +12,28 @@
   let pinInput = $state("");
   let popIndex = $state(-1);
   let maskedIndices = $state<Set<number>>(new Set());
+  let maskTimer: ReturnType<typeof setTimeout> | null = null;
+  let popTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearTimers() {
+    if (maskTimer) { clearTimeout(maskTimer); maskTimer = null; }
+    if (popTimer) { clearTimeout(popTimer); popTimer = null; }
+  }
 
   function handleDigit(digit: string) {
     if (submitting || pinInput.length >= 4) return;
     const idx = pinInput.length;
     popIndex = idx;
     pinInput += digit;
-    const newMasked = new Set(maskedIndices);
-    maskedIndices = newMasked;
-    setTimeout(() => {
+    maskedIndices = new Set(maskedIndices);
+
+    clearTimers();
+
+    popTimer = setTimeout(() => { popIndex = -1; }, 220);
+    maskTimer = setTimeout(() => {
       maskedIndices = new Set([...maskedIndices, idx]);
-      popIndex = -1;
     }, 600);
-    setTimeout(() => { popIndex = -1; }, 220);
+
     if (pinInput.length === 4) {
       onSubmit(pinInput);
     }
@@ -32,6 +41,8 @@
 
   function handleBackspace() {
     if (submitting) return;
+    clearTimers();
+    popIndex = -1;
     pinInput = pinInput.slice(0, -1);
     const newMasked = new Set<number>();
     for (let i = 0; i < pinInput.length; i++) newMasked.add(i);
@@ -40,6 +51,8 @@
 
   function handleClear() {
     if (submitting) return;
+    clearTimers();
+    popIndex = -1;
     pinInput = "";
     maskedIndices = new Set();
     onClear();
@@ -47,6 +60,8 @@
 
   $effect(() => {
     if (errorMsg || success) {
+      clearTimers();
+      popIndex = -1;
       pinInput = "";
       maskedIndices = new Set();
     }

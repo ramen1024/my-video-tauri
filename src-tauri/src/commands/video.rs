@@ -148,12 +148,12 @@ pub fn play_video(file_path: String) -> Result<(), AppError> {
 
     let shared_folder = SHARED_FOLDER_PATH.read().clone();
     if !shared_folder.is_empty() {
-        if let Ok(canonical_path) = path.canonicalize() {
-            if let Ok(canonical_base) = Path::new(&shared_folder).canonicalize() {
-                if !canonical_path.starts_with(&canonical_base) {
-                    return Err(AppError::InvalidPath("只能打开共享文件夹内的视频文件".to_string()));
-                }
-            }
+        let canonical_path = path.canonicalize()
+            .map_err(|_| AppError::InvalidPath("无法解析视频文件路径".to_string()))?;
+        let canonical_base = Path::new(&shared_folder).canonicalize()
+            .map_err(|_| AppError::InvalidPath("无法解析共享文件夹路径".to_string()))?;
+        if !canonical_path.starts_with(&canonical_base) {
+            return Err(AppError::InvalidPath("只能打开共享文件夹内的视频文件".to_string()));
         }
     }
 

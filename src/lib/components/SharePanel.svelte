@@ -12,6 +12,7 @@
 
   let selectedIp = $state("");
   let qrCodeDataUrl = $state("");
+  let qrAbortController: AbortController | null = null;
 
   $effect(() => {
     if (!selectedIp && shareInfo.ips.length > 0) {
@@ -21,9 +22,27 @@
 
   $effect(() => {
     if (selectedIp && shareInfo.port) {
+      if (qrAbortController) {
+        qrAbortController.abort();
+      }
+      const controller = new AbortController();
+      qrAbortController = controller;
+
       generateQRCodeDataURL(`http://${selectedIp}:${shareInfo.port}`)
-        .then(url => { qrCodeDataUrl = url; })
-        .catch(e => { console.error("QR code generation failed:", e); });
+        .then(url => {
+          if (!controller.signal.aborted) {
+            qrCodeDataUrl = url;
+          }
+        })
+        .catch(e => {
+          if (!controller.signal.aborted) {
+            console.error("QR code generation failed:", e);
+          }
+        });
+
+      return () => {
+        controller.abort();
+      };
     }
   });
 
