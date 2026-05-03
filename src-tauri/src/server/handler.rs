@@ -8,6 +8,12 @@ static LOGIN_PAGE: &str = include_str!("../login_template.html");
 static REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static REFRESH_COOLDOWN: AtomicBool = AtomicBool::new(false);
 
+use parking_lot::RwLock;
+use std::sync::LazyLock;
+
+static REFRESH_RESULT: LazyLock<RwLock<Option<String>>> =
+    LazyLock::new(|| RwLock::new(None));
+
 pub fn handle_request(
     request: &mut tiny_http::Request,
     ips: &[String],
@@ -86,7 +92,9 @@ pub fn handle_request(
                 let msg = result.unwrap_or_else(|_| {
                     serde_json::json!({"success": false, "message": "刷新过程中发生内部错误"}).to_string()
                 });
-                eprintln!("[刷新] {}", msg);
+                log::info!("[刷新] {}", msg);
+                let mut result_store = REFRESH_RESULT.write();
+                *result_store = Some(msg);
                 REFRESH_IN_PROGRESS.store(false, Ordering::Release);
             });
 
@@ -97,6 +105,13 @@ pub fn handle_request(
 
             let json = serde_json::json!({"success": true, "message": "刷新已开始"}).to_string();
             super::response::json_response(202, &json)
+        }
+        "/refresh-status" => {
+            let result = REFRESH_RESULT.read().clone();
+            match result {
+                Some(msg) => super::response::json_response(200, &msg),
+                None => super::response::json_response(200, r#"{"success": true, "message": "无刷新记录"}"#),
+            }
         }
         _ if url.starts_with("/video/") => {
             let range_header = request

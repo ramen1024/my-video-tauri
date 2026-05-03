@@ -89,7 +89,7 @@ fn save_password_config() {
     if let Ok(json) = serde_json::to_string_pretty(&config) {
         let path = config_path();
         if let Err(e) = std::fs::write(&path, json) {
-            println!("[密码配置] 保存失败: {}", e);
+            log::error!("[密码配置] 保存失败: {}", e);
         }
     }
 }
@@ -193,6 +193,13 @@ pub fn cleanup_expired_sessions() {
     let now = current_timestamp();
     let mut sessions = SESSIONS.write();
     sessions.retain(|_, expiry| *expiry > now);
+}
+
+pub fn start_cleanup_thread() {
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(600));
+        cleanup_expired_sessions();
+    });
 }
 
 pub fn check_rate_limit(ip: &str) -> Result<(), String> {

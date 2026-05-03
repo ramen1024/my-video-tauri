@@ -31,6 +31,9 @@ pub(crate) static SERVER_STATE: LazyLock<Mutex<ServerState>> =
 pub(crate) static SERVER_HANDLE: LazyLock<RwLock<Option<Arc<tiny_http::Server>>>> =
     LazyLock::new(|| RwLock::new(None));
 
+pub(crate) static SERVER_THREADS: LazyLock<RwLock<Vec<std::thread::JoinHandle<()>>>> =
+    LazyLock::new(|| RwLock::new(Vec::new()));
+
 pub(crate) enum ServerState {
     Stopped,
     Starting,

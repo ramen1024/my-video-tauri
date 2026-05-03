@@ -111,47 +111,11 @@ fn detect_local_ips() -> Vec<String> {
     }
 }
 
-/// URL 解码函数
-///
-/// # 实现原理
-/// 1. 遇到 %XX 时，将 XX 解析为十六进制字节
-/// 2. 收集所有字节后，转换为 UTF-8 字符串
+/// URL 解码函数，使用标准 percent-encoding 库
 pub fn urlencoding_decode(input: &str) -> String {
-    let mut bytes = Vec::with_capacity(input.len());
-    let mut chars = input.chars();
-
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let mut hex = String::with_capacity(2);
-            for _ in 0..2 {
-                if let Some(hc) = chars.next() {
-                    if hc.is_ascii_hexdigit() {
-                        hex.push(hc);
-                    } else {
-                        bytes.extend(b"%");
-                        bytes.extend(hex.as_bytes());
-                        bytes.push(hc as u8);
-                        hex.clear();
-                        break;
-                    }
-                }
-            }
-            if hex.len() == 2 {
-                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                    bytes.push(byte);
-                }
-            } else if !hex.is_empty() {
-                bytes.extend(b"%");
-                bytes.extend(hex.as_bytes());
-            }
-        } else if c == '+' {
-            bytes.push(b' ');
-        } else {
-            bytes.extend(c.to_string().as_bytes());
-        }
-    }
-
-    String::from_utf8_lossy(&bytes).to_string()
+    percent_encoding::percent_decode_str(input)
+        .decode_utf8_lossy()
+        .to_string()
 }
 
 /// 验证请求路径是否在允许的目录范围内，防止路径遍历攻击
@@ -172,7 +136,7 @@ pub fn sanitize_video_path(base: &Path, requested: &str) -> Option<std::path::Pa
     if canonical_path.starts_with(&canonical_base) {
         Some(canonical_path)
     } else {
-        eprintln!(
+        log::warn!(
             "Path traversal blocked: {:?} is outside {:?}",
             canonical_path, canonical_base
         );

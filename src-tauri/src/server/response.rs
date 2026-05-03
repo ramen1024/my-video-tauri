@@ -28,7 +28,14 @@ pub fn json_response(status_code: u16, json: &str) -> tiny_http::Response<Box<dy
 }
 
 pub fn html_response(html: &str) -> tiny_http::Response<Box<dyn Read + Send>> {
-    build_response(200, "text/html; charset=utf-8", html.as_bytes().to_vec())
+    let mut resp = build_response(200, "text/html; charset=utf-8", html.as_bytes().to_vec());
+    resp.add_header(
+        tiny_http::Header::from_bytes(
+            &b"Content-Security-Policy"[..],
+            b"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'",
+        ).unwrap(),
+    );
+    resp
 }
 
 pub fn redirect_response(location: &str) -> tiny_http::Response<Box<dyn Read + Send>> {

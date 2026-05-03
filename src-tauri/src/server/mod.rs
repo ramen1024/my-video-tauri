@@ -7,9 +7,7 @@ use std::sync::Arc;
 
 use crate::{SERVER_STATE, ServerState};
 
-const WORKER_THREADS: usize = 4;
-
-pub fn start_http_server(ips: &[String], port: u16) -> Result<(), String> {
+pub fn start_http_server(ips: &[String], port: u16) -> Result<Vec<std::thread::JoinHandle<()>>, String> {
     let addr = format!("0.0.0.0:{}", port);
     let ips = ips.to_vec();
 
@@ -19,10 +17,16 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(), String> {
     let server = Arc::new(server);
     crate::SERVER_HANDLE.write().replace(server.clone());
 
-    for _ in 0..WORKER_THREADS {
+    let worker_count = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+
+    let mut handles = Vec::with_capacity(worker_count);
+
+    for _ in 0..worker_count {
         let server = server.clone();
         let ips = ips.clone();
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             for mut request in server.incoming_requests() {
                 let running = {
                     let state = SERVER_STATE.lock();
@@ -35,7 +39,8 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(), String> {
                 request.respond(resp).ok();
             }
         });
+        handles.push(handle);
     }
 
-    Ok(())
+    Ok(handles)
 }

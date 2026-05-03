@@ -4,7 +4,7 @@ use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::utils::get_local_ips;
 use crate::server;
-use crate::{SERVER_STATE, ServerState};
+use crate::{SERVER_STATE, SERVER_THREADS, ServerState};
 
 #[tauri::command]
 pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
@@ -42,9 +42,11 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
     });
 
     match rx.recv() {
-        Ok(Ok(())) => {
+        Ok(Ok(handles)) => {
             let mut state = SERVER_STATE.lock();
             *state = ServerState::Running;
+            let mut threads = SERVER_THREADS.write();
+            *threads = handles;
         }
         Ok(Err(e)) => {
             let mut state = SERVER_STATE.lock();
@@ -80,6 +82,15 @@ pub fn stop_share_server() -> Result<(), AppError> {
 
     if let Some(server) = crate::SERVER_HANDLE.write().take() {
         server.unblock();
+    }
+
+    let handles = {
+        let mut threads = SERVER_THREADS.write();
+        std::mem::take(&mut *threads)
+    };
+
+    for handle in handles {
+        let _ = handle.join();
     }
 
     {
