@@ -4,7 +4,7 @@
   import type { VideoFile, ShareServerInfo, PasswordStatus } from "$lib/types";
   import { parseAppError } from "$lib/types";
   import { isSupportedFormat } from "$lib/utils/format";
-  import { scanVideos, getSharedVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
+  import { scanVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
   import { startShareServer, stopShareServer } from "$lib/services/share";
   import { getPasswordStatus } from "$lib/services/password";
   import Header from "$lib/components/Header.svelte";
@@ -46,8 +46,7 @@
     errorMsg = "";
     videos = [];
     try {
-      await scanVideos(currentFolder);
-      videos = await getSharedVideos();
+      videos = await scanVideos(currentFolder);
     } catch (e) {
       const msg = parseAppError(e);
       if (msg.includes("扫描已取消")) {

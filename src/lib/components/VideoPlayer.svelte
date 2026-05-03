@@ -11,12 +11,14 @@
   let { video, onClose }: Props = $props();
 
   let videoElement: HTMLVideoElement | undefined = $state();
+  let containerElement: HTMLDivElement | undefined = $state();
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") onClose();
   }
 
   onMount(() => {
+    if (containerElement) containerElement.focus();
     return () => {
       if (videoElement) {
         videoElement.pause();
@@ -29,7 +31,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="player-overlay" role="dialog" aria-modal="true" aria-label="视频播放器">
+<div class="player-overlay" role="dialog" aria-modal="true" aria-label="视频播放器" tabindex="-1" bind:this={containerElement}>
   <div class="player-container">
     <div class="player-header">
       <span class="player-title">{video.name}</span>
@@ -46,6 +48,7 @@
     position: fixed; top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0,0,0,.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
     z-index: 1000; display: flex; align-items: center; justify-content: center;
+    outline: none;
   }
   .player-container {
     width: 90%; max-width: 1200px;

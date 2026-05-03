@@ -19,7 +19,7 @@ pub struct VideoFile {
 
 /// 共享服务器信息结构体
 /// 返回给前端，包含服务器地址和视频列表
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ShareServerInfo {
     pub ips: Vec<String>,
     pub port: u16,

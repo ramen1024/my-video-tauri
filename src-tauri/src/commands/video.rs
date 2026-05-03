@@ -10,22 +10,17 @@ use crate::models::VideoFile;
 use crate::utils::{format_system_time, is_root_directory};
 use crate::{CANCEL_SCAN_FLAG, SHARED_VIDEOS, SHARED_FOLDER_PATH};
 
-use std::collections::HashSet;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
-static VIDEO_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    [
-        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-    ]
-    .iter()
-    .cloned()
-    .collect()
-});
+const VIDEO_EXTENSIONS: &[&str] = &[
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
+];
 
 #[tauri::command]
-pub async fn scan_videos(folder_path: String) -> Result<(), AppError> {
+pub async fn scan_videos(folder_path: String) -> Result<Arc<Vec<VideoFile>>, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
-        scan_videos_sync(folder_path)
+        scan_videos_sync(folder_path)?;
+        Ok(SHARED_VIDEOS.read().clone())
     })
     .await
     .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))?
@@ -60,7 +55,7 @@ pub(crate) fn scan_videos_sync(folder_path: String) -> Result<(), AppError> {
                 return false;
             }
             let ext = e.path().extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
-            matches!(ext, Some(ref e) if VIDEO_EXTENSIONS.contains(e.as_str()))
+            matches!(ext, Some(ref e) if VIDEO_EXTENSIONS.contains(&e.as_str()))
         })
         .collect();
 
@@ -147,8 +142,19 @@ pub fn play_video(file_path: String) -> Result<(), AppError> {
         .map(|e| e.to_lowercase());
 
     match ext {
-        Some(ref e) if VIDEO_EXTENSIONS.contains(e.as_str()) => {}
+        Some(ref e) if VIDEO_EXTENSIONS.contains(&e.as_str()) => {}
         _ => return Err(AppError::InvalidPath("不允许打开非视频文件".to_string())),
+    }
+
+    let shared_folder = SHARED_FOLDER_PATH.read().clone();
+    if !shared_folder.is_empty() {
+        if let Ok(canonical_path) = path.canonicalize() {
+            if let Ok(canonical_base) = Path::new(&shared_folder).canonicalize() {
+                if !canonical_path.starts_with(&canonical_base) {
+                    return Err(AppError::InvalidPath("只能打开共享文件夹内的视频文件".to_string()));
+                }
+            }
+        }
     }
 
     tauri_plugin_opener::open_path(&file_path, None::<&str>)

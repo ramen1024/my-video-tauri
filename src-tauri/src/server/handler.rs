@@ -77,11 +77,16 @@ pub fn handle_request(
             }
 
             std::thread::spawn(move || {
-                let result = match crate::commands::video::scan_videos_sync(folder_path) {
-                    Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"}).to_string(),
-                    Err(e) => serde_json::json!({"success": false, "message": e.to_string()}).to_string(),
-                };
-                println!("[刷新] {}", result);
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    match crate::commands::video::scan_videos_sync(folder_path) {
+                        Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"}).to_string(),
+                        Err(e) => serde_json::json!({"success": false, "message": e.to_string()}).to_string(),
+                    }
+                }));
+                let msg = result.unwrap_or_else(|_| {
+                    serde_json::json!({"success": false, "message": "刷新过程中发生内部错误"}).to_string()
+                });
+                eprintln!("[刷新] {}", msg);
                 REFRESH_IN_PROGRESS.store(false, Ordering::Release);
             });
 

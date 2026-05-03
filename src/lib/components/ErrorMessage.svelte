@@ -12,7 +12,8 @@
 
   $effect(() => {
     if (timer) clearTimeout(timer);
-    if (message && onDismiss) {
+    const currentMessage = message;
+    if (currentMessage && onDismiss) {
       timer = setTimeout(() => { onDismiss(); }, 5000);
     }
   });

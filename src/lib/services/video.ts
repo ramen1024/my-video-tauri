@@ -2,8 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { VideoFile } from "$lib/types";
 
-export async function scanVideos(folderPath: string): Promise<void> {
-  await invoke("scan_videos", { folderPath });
+export async function scanVideos(folderPath: string): Promise<VideoFile[]> {
+  return await invoke("scan_videos", { folderPath });
 }
 
 export async function getSharedVideos(): Promise<VideoFile[]> {

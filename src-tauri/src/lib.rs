@@ -49,6 +49,7 @@ pub fn run() {
                 password::set_config_dir(data_dir);
             }
             password::load_password_config();
+            password::start_cleanup_thread();
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

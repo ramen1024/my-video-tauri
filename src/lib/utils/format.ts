@@ -1,4 +1,4 @@
-const SUPPORTED_EXTENSIONS = ["mp4", "webm", "ogg", "m4v"];
+const SUPPORTED_EXTENSIONS = ["mp4", "webm", "m4v"];
 
 export function isSupportedFormat(ext: string): boolean {
   return SUPPORTED_EXTENSIONS.includes(ext.toLowerCase());

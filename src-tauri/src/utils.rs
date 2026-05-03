@@ -4,8 +4,10 @@ use std::time::SystemTime;
 
 use parking_lot::RwLock;
 
-static CACHED_IPS: LazyLock<RwLock<Option<Vec<String>>>> =
+static CACHED_IPS: LazyLock<RwLock<Option<(Vec<String>, std::time::Instant)>>> =
     LazyLock::new(|| RwLock::new(None));
+
+const IP_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// 将系统时间格式化为可读字符串
 ///
@@ -62,13 +64,15 @@ pub fn is_root_directory(path: &Path) -> bool {
 pub fn get_local_ips() -> Vec<String> {
     {
         let cache = CACHED_IPS.read();
-        if let Some(ref ips) = *cache {
-            return ips.clone();
+        if let Some((ref ips, cached_at)) = *cache {
+            if cached_at.elapsed() < IP_CACHE_TTL {
+                return ips.clone();
+            }
         }
     }
 
     let ips = detect_local_ips();
-    *CACHED_IPS.write() = Some(ips.clone());
+    *CACHED_IPS.write() = Some((ips.clone(), std::time::Instant::now()));
     ips
 }
 
@@ -113,14 +117,32 @@ fn detect_local_ips() -> Vec<String> {
 /// 1. 遇到 %XX 时，将 XX 解析为十六进制字节
 /// 2. 收集所有字节后，转换为 UTF-8 字符串
 pub fn urlencoding_decode(input: &str) -> String {
-    let mut bytes = Vec::new();
-    let mut chars = input.chars().peekable();
+    let mut bytes = Vec::with_capacity(input.len());
+    let mut chars = input.chars();
 
     while let Some(c) = chars.next() {
         if c == '%' {
-            let hex: String = chars.by_ref().take(2).collect();
-            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                bytes.push(byte);
+            let mut hex = String::with_capacity(2);
+            for _ in 0..2 {
+                if let Some(hc) = chars.next() {
+                    if hc.is_ascii_hexdigit() {
+                        hex.push(hc);
+                    } else {
+                        bytes.extend(b"%");
+                        bytes.extend(hex.as_bytes());
+                        bytes.push(hc as u8);
+                        hex.clear();
+                        break;
+                    }
+                }
+            }
+            if hex.len() == 2 {
+                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                    bytes.push(byte);
+                }
+            } else if !hex.is_empty() {
+                bytes.extend(b"%");
+                bytes.extend(hex.as_bytes());
             }
         } else if c == '+' {
             bytes.push(b' ');
@@ -150,7 +172,7 @@ pub fn sanitize_video_path(base: &Path, requested: &str) -> Option<std::path::Pa
     if canonical_path.starts_with(&canonical_base) {
         Some(canonical_path)
     } else {
-        println!(
+        eprintln!(
             "Path traversal blocked: {:?} is outside {:?}",
             canonical_path, canonical_base
         );
