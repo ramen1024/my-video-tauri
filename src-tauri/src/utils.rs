@@ -79,8 +79,12 @@ pub fn get_local_ips() -> Vec<String> {
 fn detect_local_ips() -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
         let output = std::process::Command::new("cmd")
             .args(["/C", "ipconfig"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
 
         let mut ips = Vec::new();
