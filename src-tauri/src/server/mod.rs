@@ -20,6 +20,8 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Se
         .map(|n| n.get())
         .unwrap_or(4);
 
+    log::info!("[HTTP服务器] 启动: addr={}, workers={}", addr, worker_count);
+
     let mut handles = Vec::with_capacity(worker_count);
 
     for _ in 0..worker_count {
@@ -38,7 +40,7 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Se
                     Some(mut request) => {
                         let running = {
                             let state = SERVER_STATE.lock();
-                            matches!(*state, ServerState::Running)
+                            matches!(*state, ServerState::Running | ServerState::Stopping)
                         };
                         if !running {
                             break;

@@ -47,6 +47,23 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("navigation-guard")
+                .on_navigation(|_webview, url| {
+                    let url_str = url.as_str();
+                    let allowed = url_str.starts_with("http://localhost:1420")
+                        || url_str.starts_with("http://localhost:1421")
+                        || url_str.starts_with("https://tauri.localhost")
+                        || url_str.starts_with("http://tauri.localhost")
+                        || url_str.starts_with("tauri://")
+                        || url.scheme() == "asset";
+                    if !allowed {
+                        log::warn!("[导航拦截] 阻止外部导航: {}", url_str);
+                    }
+                    allowed
+                })
+                .build(),
+        )
         .setup(|app| {
             if let Ok(data_dir) = app.path().app_data_dir() {
                 password::set_config_dir(data_dir);

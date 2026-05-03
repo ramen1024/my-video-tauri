@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { ShareServerInfo } from "$lib/types";
   import { generateQRCodeDataURL } from "$lib/utils/qrcode";
+  import { openUrl } from "@tauri-apps/plugin-opener";
 
   interface Props {
     shareInfo: ShareServerInfo;
@@ -29,6 +30,17 @@
   function selectIp(ip: string) {
     selectedIp = ip;
   }
+
+  async function openShareUrl(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const url = `http://${selectedIp}:${shareInfo.port}`;
+    try {
+      await openUrl(url);
+    } catch (err) {
+      console.error("打开URL失败:", err);
+    }
+  }
 </script>
 
 <div class="share-info">
@@ -53,9 +65,9 @@
           </button>
         {/each}
       </div>
-      <a href="http://{selectedIp}:{shareInfo.port}" target="_blank" class="selected-link">
+      <button class="selected-link" onclick={openShareUrl}>
         http://{selectedIp}:{shareInfo.port}
-      </a>
+      </button>
     </div>
   </div>
   <div class="firewall-hint">
@@ -80,8 +92,8 @@
     font-size: 13px; color: rgba(255,255,255,.7); word-break: break-all;
     display: flex; flex-direction: column; gap: 6px;
   }
-  .share-address a { color: #60a5fa; text-decoration: none; font-size: 14px; font-weight: 600; transition: all .2s ease; }
-  .share-address a:hover { color: #93c5fd; }
+  .share-address button.selected-link { color: #60a5fa; text-decoration: none; font-size: 14px; font-weight: 600; transition: all .2s ease; cursor: pointer; background: none; border: none; padding: 0; font-family: inherit; text-align: left; }
+  .share-address button.selected-link:hover { color: #93c5fd; }
   .ip-list { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
   .ip-btn {
     padding: 6px 12px; border: 1px solid rgba(255,255,255,.1);

@@ -23,6 +23,8 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
         }
     }
 
+    log::info!("[共享] 开始启动: folder={}, port={}", folder_path, port);
+
     let path = Path::new(&folder_path);
     if !path.exists() || !path.is_dir() {
         let mut state = SERVER_STATE.lock();
@@ -31,15 +33,25 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
     }
 
     let folder_path_clone = folder_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let scan_result = tauri::async_runtime::spawn_blocking(move || {
         super::video::scan_videos_sync(folder_path_clone)
     })
     .await
     .map_err(|e| {
         let mut state = SERVER_STATE.lock();
         *state = ServerState::Stopped;
+        log::error!("[共享] 扫描任务执行失败: {}", e);
         AppError::Other(format!("扫描任务执行失败: {}", e))
-    })??;
+    })?;
+
+    if let Err(e) = scan_result {
+        let mut state = SERVER_STATE.lock();
+        *state = ServerState::Stopped;
+        log::error!("[共享] 扫描失败: {}", e);
+        return Err(e);
+    }
+
+    log::info!("[共享] 视频扫描完成，正在启动HTTP服务器...");
 
     let ips = get_local_ips();
     let ips_clone = ips.clone();
@@ -57,6 +69,7 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
     .map_err(|e| {
         let mut state = SERVER_STATE.lock();
         *state = ServerState::Stopped;
+        log::error!("[共享] 等待服务器启动失败: {}", e);
         AppError::Other(format!("等待服务器启动失败: {}", e))
     })?;
 
@@ -69,16 +82,19 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
             SERVER_HANDLE.write().replace(server_arc);
             let mut threads = SERVER_THREADS.write();
             *threads = handles;
+            log::info!("[共享] 服务器启动成功: ips={:?}, port={}", ips, port);
             Ok(ShareServerInfo { ips, port })
         }
         Ok(Err(e)) => {
             let mut state = SERVER_STATE.lock();
             *state = ServerState::Stopped;
+            log::error!("[共享] HTTP服务器启动失败: {}", e);
             Err(AppError::IoError(e))
         }
         Err(_) => {
             let mut state = SERVER_STATE.lock();
             *state = ServerState::Stopped;
+            log::error!("[共享] 服务器启动超时");
             Err(AppError::IoError("服务器启动超时".to_string()))
         }
     }
@@ -97,6 +113,7 @@ pub async fn stop_share_server() -> Result<(), AppError> {
             }
             ServerState::Running => {
                 *state = ServerState::Stopping;
+                log::info!("[共享] 开始停止服务器, worker_count={}", SERVER_THREADS.read().len());
                 SERVER_THREADS.read().len()
             }
         }
@@ -119,6 +136,7 @@ pub async fn stop_share_server() -> Result<(), AppError> {
             for handle in handles {
                 let _ = handle.join();
             }
+            log::info!("[共享] 所有worker线程已退出");
         });
     }
 
@@ -127,6 +145,7 @@ pub async fn stop_share_server() -> Result<(), AppError> {
         *state = ServerState::Stopped;
     }
 
+    log::info!("[共享] 服务器已停止");
     Ok(())
 }
 
