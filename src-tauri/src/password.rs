@@ -2,6 +2,7 @@ use std::sync::LazyLock;
 
 use parking_lot::RwLock;
 use rand::Rng;
+use sha2::{Sha256, Digest};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,7 +26,6 @@ static FAILED_ATTEMPTS: LazyLock<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
 const SESSION_DURATION_SECS: i64 = 3600;
 const MAX_FAILED_ATTEMPTS: u32 = 3;
 const LOCK_DURATION_SECS: i64 = 30;
-const BCRYPT_COST: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordStatus {
@@ -128,6 +128,12 @@ pub fn generate_random_password() -> String {
     format!("{:04}", rng.random_range(0..10000))
 }
 
+fn hash_password(password: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 pub fn set_password(password: &str) -> Result<(), String> {
     if password.len() != 4 {
         return Err("密码必须是4位数字".to_string());
@@ -136,8 +142,7 @@ pub fn set_password(password: &str) -> Result<(), String> {
         return Err("密码只能包含数字0-9".to_string());
     }
 
-    let hash = bcrypt::hash(password, BCRYPT_COST)
-        .map_err(|e| format!("密码哈希失败: {}", e))?;
+    let hash = hash_password(password);
 
     {
         let mut stored_hash = PASSWORD_HASH.write();
@@ -151,8 +156,8 @@ pub fn verify_password(password: &str) -> Result<bool, String> {
     let hash_guard = PASSWORD_HASH.read();
     match hash_guard.as_ref() {
         Some(hash) => {
-            bcrypt::verify(password, hash)
-                .map_err(|e| format!("密码验证失败: {}", e))
+            let computed = hash_password(password);
+            Ok(computed == *hash)
         }
         None => Err("未设置密码".to_string()),
     }
