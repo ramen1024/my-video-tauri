@@ -58,36 +58,40 @@ pub fn handle_request(
             resp
         }
         "/refresh" => {
-            if REFRESH_IN_PROGRESS.load(Ordering::Relaxed) {
+            if REFRESH_IN_PROGRESS.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
                 let json = serde_json::json!({"success": false, "message": "正在刷新中，请稍后"}).to_string();
                 return super::response::json_response(429, &json);
             }
-            if REFRESH_COOLDOWN.load(Ordering::Relaxed) {
+            if REFRESH_COOLDOWN.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+                REFRESH_IN_PROGRESS.store(false, Ordering::Release);
                 let json = serde_json::json!({"success": false, "message": "刷新过于频繁，请稍后再试"}).to_string();
                 return super::response::json_response(429, &json);
             }
 
-            REFRESH_IN_PROGRESS.store(true, Ordering::Relaxed);
-            REFRESH_COOLDOWN.store(true, Ordering::Relaxed);
-
             let folder_path = crate::SHARED_FOLDER_PATH.read().clone();
-            let result = if !folder_path.is_empty() {
-                match crate::commands::video::scan_videos_sync(folder_path) {
+            if folder_path.is_empty() {
+                REFRESH_IN_PROGRESS.store(false, Ordering::Release);
+                REFRESH_COOLDOWN.store(false, Ordering::Release);
+                let json = serde_json::json!({"success": false, "message": "未设置共享文件夹"}).to_string();
+                return super::response::json_response(400, &json);
+            }
+
+            std::thread::spawn(move || {
+                let result = match crate::commands::video::scan_videos_sync(folder_path) {
                     Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"}).to_string(),
                     Err(e) => serde_json::json!({"success": false, "message": e.to_string()}).to_string(),
-                }
-            } else {
-                serde_json::json!({"success": false, "message": "未设置共享文件夹"}).to_string()
-            };
-
-            REFRESH_IN_PROGRESS.store(false, Ordering::Relaxed);
+                };
+                println!("[刷新] {}", result);
+                REFRESH_IN_PROGRESS.store(false, Ordering::Release);
+            });
 
             std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                REFRESH_COOLDOWN.store(false, Ordering::Relaxed);
+                REFRESH_COOLDOWN.store(false, Ordering::Release);
             });
 
-            super::response::json_response(200, &result)
+            let json = serde_json::json!({"success": true, "message": "刷新已开始"}).to_string();
+            super::response::json_response(202, &json)
         }
         _ if url.starts_with("/video/") => {
             let range_header = request

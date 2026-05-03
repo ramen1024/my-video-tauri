@@ -1,5 +1,11 @@
 use std::path::Path;
+use std::sync::LazyLock;
 use std::time::SystemTime;
+
+use parking_lot::RwLock;
+
+static CACHED_IPS: LazyLock<RwLock<Option<Vec<String>>>> =
+    LazyLock::new(|| RwLock::new(None));
 
 /// 将系统时间格式化为可读字符串
 ///
@@ -54,6 +60,19 @@ pub fn is_root_directory(path: &Path) -> bool {
 /// # 返回
 /// IP 地址列表，过滤掉 127.x.x.x 回环地址
 pub fn get_local_ips() -> Vec<String> {
+    {
+        let cache = CACHED_IPS.read();
+        if let Some(ref ips) = *cache {
+            return ips.clone();
+        }
+    }
+
+    let ips = detect_local_ips();
+    *CACHED_IPS.write() = Some(ips.clone());
+    ips
+}
+
+fn detect_local_ips() -> Vec<String> {
     #[cfg(target_os = "windows")]
     {
         let output = std::process::Command::new("cmd")

@@ -25,7 +25,7 @@
   let isSharing = $state(false);
   let shareInfo = $state<ShareServerInfo | null>(null);
   let isStartingShare = $state(false);
-  let passwordStatus = $state<PasswordStatus>({ enabled: false, has_password: false, password: null });
+  let passwordStatus = $state<PasswordStatus>({ enabled: false, has_password: false });
 
   async function selectFolder() {
     try {

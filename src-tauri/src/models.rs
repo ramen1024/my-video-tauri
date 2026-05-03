@@ -21,10 +21,6 @@ pub struct VideoFile {
 /// 返回给前端，包含服务器地址和视频列表
 #[derive(Debug, Serialize)]
 pub struct ShareServerInfo {
-    /// 本机所有可用的 IP 地址列表
     pub ips: Vec<String>,
-    /// 服务器监听端口
     pub port: u16,
-    /// 共享的视频列表
-    pub videos: Vec<VideoFile>,
 }

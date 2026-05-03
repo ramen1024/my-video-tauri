@@ -10,13 +10,11 @@ export interface VideoFile {
 export interface ShareServerInfo {
   ips: string[];
   port: number;
-  videos: VideoFile[];
 }
 
 export interface PasswordStatus {
   enabled: boolean;
   has_password: boolean;
-  password: string | null;
 }
 
 export type SortField = "name" | "size" | "modified";

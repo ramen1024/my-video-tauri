@@ -4,7 +4,7 @@ use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::utils::get_local_ips;
 use crate::server;
-use crate::{SERVER_STATE, SHARED_VIDEOS, ServerState, VideoFile};
+use crate::{SERVER_STATE, ServerState};
 
 #[tauri::command]
 pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
@@ -31,7 +31,6 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
     }
 
     super::video::scan_videos_sync(folder_path.clone())?;
-    let videos: Vec<VideoFile> = SHARED_VIDEOS.read().clone().to_vec();
     let ips = get_local_ips();
 
     let ips_clone = ips.clone();
@@ -59,7 +58,7 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
         }
     }
 
-    Ok(ShareServerInfo { ips, port, videos })
+    Ok(ShareServerInfo { ips, port })
 }
 
 #[tauri::command]
@@ -79,7 +78,9 @@ pub fn stop_share_server() -> Result<(), AppError> {
         }
     }
 
-    crate::SERVER_HANDLE.write().take().map(|s| s.unblock());
+    if let Some(server) = crate::SERVER_HANDLE.write().take() {
+        server.unblock();
+    }
 
     {
         let mut state = SERVER_STATE.lock();

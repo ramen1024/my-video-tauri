@@ -11,6 +11,7 @@
 
   let { passwordStatus, onStatusChange, onError }: Props = $props();
 
+  let knownPassword = $state("");
   let pwdPanelExpanded = $state(false);
   let pwdInput = $state("");
   let pwdErrorMsg = $state("");
@@ -22,7 +23,6 @@
 
   let passwordEnabled = $derived(passwordStatus.enabled);
   let hasPassword = $derived(passwordStatus.has_password);
-  let currentPassword = $derived(passwordStatus.password);
 
   async function toggleProtection() {
     if (!hasPassword && !passwordEnabled) {
@@ -39,7 +39,7 @@
 
   async function copyPassword() {
     try {
-      await navigator.clipboard.writeText(currentPassword || "");
+      await navigator.clipboard.writeText(knownPassword);
       pwdCopied = true;
       setTimeout(() => { pwdCopied = false; }, 1500);
     } catch (e) {
@@ -54,6 +54,7 @@
       if (!passwordEnabled) {
         await setPasswordEnabled(true);
       }
+      knownPassword = newPwd;
       const status = await getPasswordStatus();
       onStatusChange(status);
       pwdInput = "";
@@ -108,6 +109,7 @@
       if (!passwordEnabled) {
         await setPasswordEnabled(true);
       }
+      knownPassword = pwdInput;
       const status = await getPasswordStatus();
       onStatusChange(status);
       pwdSuccess = true;
@@ -130,7 +132,8 @@
   async function clearPassword() {
     try {
       await resetPassword();
-      onStatusChange({ enabled: false, has_password: false, password: null });
+      knownPassword = "";
+      onStatusChange({ enabled: false, has_password: false });
       pwdInput = "";
       pwdPanelExpanded = false;
       maskedIndices = new Set();
@@ -162,12 +165,12 @@
 </div>
 
 <div class="pwd-section">
-  {#if hasPassword && currentPassword}
+  {#if hasPassword && knownPassword}
     <div class="pwd-show-area">
       <div class="pwd-display-row">
         <span class="pwd-hint-text">{passwordEnabled ? "访问密码" : "已保存密码"}:</span>
         <div class="pwd-digits">
-          {#each currentPassword.split('') as digit}
+          {#each knownPassword.split('') as digit}
             <span class="pwd-digit">{digit}</span>
           {/each}
         </div>
@@ -179,6 +182,12 @@
         </button>
         <button class="action-btn clear-btn" onclick={clearPassword}>清除</button>
       </div>
+    </div>
+  {:else if hasPassword && !knownPassword}
+    <div class="pwd-setup-area">
+      <div class="setup-hint">密码已设置但当前会话未记录，可重新设置新密码</div>
+      <button class="setup-random-btn" onclick={randomGenerateAndApply}>随机生成新密码</button>
+      <button class="setup-manual-btn" onclick={togglePwdPanel}>手动输入新密码</button>
     </div>
   {:else if !hasPassword}
     <div class="pwd-setup-area">

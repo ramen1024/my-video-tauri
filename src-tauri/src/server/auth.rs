@@ -37,24 +37,14 @@ pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<
             match password::authenticate_web_request(&ip, pwd) {
                 Ok(token) => {
                     let json = serde_json::json!({"success": true, "token": token});
-                    let json_str = json.to_string();
-                    let bytes = json_str.as_bytes().to_vec();
-                    let len = bytes.len();
-                    let cursor: Box<dyn Read + Send> = Box::new(std::io::Cursor::new(bytes));
-                    tiny_http::Response::new(
-                        200.into(),
-                        vec![
-                            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
-                            tiny_http::Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()).unwrap(),
-                            tiny_http::Header::from_bytes(
-                                &b"Set-Cookie"[..],
-                                format!("session_token={}; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", token).as_bytes(),
-                            ).unwrap(),
-                        ],
-                        cursor,
-                        Some(len),
-                        None,
-                    )
+                    let mut resp = super::response::json_response(200, &json.to_string());
+                    resp.add_header(
+                        tiny_http::Header::from_bytes(
+                            &b"Set-Cookie"[..],
+                            format!("session_token={}; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", token).as_bytes(),
+                        ).unwrap(),
+                    );
+                    resp
                 }
                 Err(e) => {
                     let json = serde_json::json!({"success": false, "message": e});

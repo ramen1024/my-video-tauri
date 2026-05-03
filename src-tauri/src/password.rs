@@ -10,9 +10,6 @@ use std::sync::Arc;
 
 static PASSWORD_ENABLED: AtomicBool = AtomicBool::new(false);
 
-static PASSWORD_PLAIN: LazyLock<Arc<RwLock<Option<String>>>> =
-    LazyLock::new(|| Arc::new(RwLock::new(None)));
-
 static PASSWORD_HASH: LazyLock<Arc<RwLock<Option<String>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(None)));
 
@@ -34,7 +31,6 @@ const BCRYPT_COST: u32 = 10;
 pub struct PasswordStatus {
     pub enabled: bool,
     pub has_password: bool,
-    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,14 +104,13 @@ pub fn set_password_enabled(enabled: bool) {
 }
 
 pub fn has_password_set() -> bool {
-    PASSWORD_PLAIN.read().is_some() || PASSWORD_HASH.read().is_some()
+    PASSWORD_HASH.read().is_some()
 }
 
 pub fn get_password_status() -> PasswordStatus {
     PasswordStatus {
         enabled: is_password_enabled(),
         has_password: has_password_set(),
-        password: PASSWORD_PLAIN.read().clone(),
     }
 }
 
@@ -136,10 +131,6 @@ pub fn set_password(password: &str) -> Result<(), String> {
         .map_err(|e| format!("密码哈希失败: {}", e))?;
 
     {
-        let mut stored = PASSWORD_PLAIN.write();
-        *stored = Some(password.to_string());
-    }
-    {
         let mut stored_hash = PASSWORD_HASH.write();
         *stored_hash = Some(hash);
     }
@@ -154,21 +145,11 @@ pub fn verify_password(password: &str) -> Result<bool, String> {
             bcrypt::verify(password, hash)
                 .map_err(|e| format!("密码验证失败: {}", e))
         }
-        None => {
-            let plain_guard = PASSWORD_PLAIN.read();
-            match plain_guard.as_ref() {
-                Some(stored_pwd) => Ok(password == stored_pwd),
-                None => Err("未设置密码".to_string()),
-            }
-        }
+        None => Err("未设置密码".to_string()),
     }
 }
 
 pub fn reset_password() {
-    {
-        let mut stored = PASSWORD_PLAIN.write();
-        *stored = None;
-    }
     {
         let mut stored_hash = PASSWORD_HASH.write();
         *stored_hash = None;

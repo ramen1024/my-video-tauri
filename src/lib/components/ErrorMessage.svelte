@@ -1,10 +1,25 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+
   interface Props {
     message: string;
     onDismiss?: () => void;
   }
 
   let { message, onDismiss }: Props = $props();
+
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    if (timer) clearTimeout(timer);
+    if (message && onDismiss) {
+      timer = setTimeout(() => { onDismiss(); }, 5000);
+    }
+  });
+
+  onDestroy(() => {
+    if (timer) clearTimeout(timer);
+  });
 </script>
 
 {#if message}

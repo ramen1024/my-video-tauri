@@ -420,12 +420,12 @@
                 <input type="text" id="searchInput" placeholder="🔍 搜索视频..." oninput="filterVideos()">
             </div>
             <div class="sort-buttons">
-                <button class="sort-btn active" onclick="sortVideos('name', 'asc')">名称 ↑</button>
-                <button class="sort-btn" onclick="sortVideos('name', 'desc')">名称 ↓</button>
-                <button class="sort-btn" onclick="sortVideos('size', 'desc')">大小 ↓</button>
-                <button class="sort-btn" onclick="sortVideos('size', 'asc')">大小 ↑</button>
-                <button class="sort-btn" onclick="sortVideos('modified', 'desc')">时间 ↓</button>
-                <button class="sort-btn" onclick="sortVideos('modified', 'asc')">时间 ↑</button>
+                <button class="sort-btn active" onclick="sortVideos('name', 'asc', this)">名称 ↑</button>
+                <button class="sort-btn" onclick="sortVideos('name', 'desc', this)">名称 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('size', 'desc', this)">大小 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('size', 'asc', this)">大小 ↑</button>
+                <button class="sort-btn" onclick="sortVideos('modified', 'desc', this)">时间 ↓</button>
+                <button class="sort-btn" onclick="sortVideos('modified', 'asc', this)">时间 ↑</button>
                 <button class="sort-btn" onclick="refreshVideos()" id="refreshBtn" title="刷新列表">🔄 刷新</button>
             </div>
         </div>
@@ -493,13 +493,15 @@
                     cache: 'no-cache'
                 });
 
-                if (response.ok) {
+                if (response.ok || response.status === 202) {
                     const result = await response.json();
                     console.log('刷新结果:', result.message);
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                     await fetchVideos();
                 } else {
-                    console.error('刷新失败:', response.status);
-                    alert('刷新失败，请重试');
+                    const result = await response.json();
+                    console.error('刷新失败:', result.message || response.status);
+                    alert(result.message || '刷新失败，请重试');
                 }
             } catch (error) {
                 console.error('刷新出错:', error);
@@ -579,8 +581,8 @@
                 return;
             }
 
-            list.innerHTML = filtered.map(v => `
-                <div class="video-item" onclick="openPlayer('/video/${encodeURIComponent(v.relative_path)}', '${escapeHtml(v.name.replace(/'/g, "\\\\'"))}')">
+            list.innerHTML = filtered.map((v, i) => `
+                <div class="video-item" data-index="${i}">
                     <div class="video-icon">${getExtIcon(v.extension)}</div>
                     <div class="video-info">
                         <div class="video-name">${escapeHtml(v.name)}</div>
@@ -593,15 +595,17 @@
                 </div>
             `).join('');
 
+            list._videos = filtered;
+
             document.getElementById('totalCount').textContent = filtered.length;
             const totalBytes = filtered.reduce((sum, v) => sum + v.size, 0);
             document.getElementById('totalSize').textContent = formatSize(totalBytes);
         }
 
-        function sortVideos(field, order) {
+        function sortVideos(field, order, btn) {
             currentSort = { field, order };
-            document.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
             renderVideos();
         }
 
@@ -614,9 +618,34 @@
             if (e.key === 'Escape') closePlayer();
         });
 
+        document.getElementById('videoList').addEventListener('click', function(e) {
+            const item = e.target.closest('.video-item');
+            if (!item) return;
+            const idx = parseInt(item.dataset.index, 10);
+            const list = document.getElementById('videoList');
+            const v = list._videos && list._videos[idx];
+            if (v) {
+                openPlayer('/video/' + encodeURIComponent(v.relative_path), v.name);
+            }
+        });
+
+        let pollTimer = null;
+        function startPolling() {
+            if (pollTimer) return;
+            pollTimer = setInterval(fetchVideos, 30000);
+        }
+        function stopPolling() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        }
+
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) stopPolling();
+            else { fetchVideos(); startPolling(); }
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             fetchVideos();
-            setInterval(fetchVideos, 30000);
+            startPolling();
         });
     </script>
 </body>
