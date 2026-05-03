@@ -4,10 +4,10 @@ use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::utils::get_local_ips;
 use crate::server;
-use crate::{SERVER_STATE, SERVER_THREADS, ServerState};
+use crate::{SERVER_HANDLE, SERVER_STATE, SERVER_THREADS, ServerState};
 
 #[tauri::command]
-pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
+pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
     {
         let mut state = SERVER_STATE.lock();
         match *state {
@@ -30,9 +30,18 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
         return Err(AppError::InvalidPath("无效的文件夹路径".to_string()));
     }
 
-    super::video::scan_videos_sync(folder_path.clone())?;
-    let ips = get_local_ips();
+    let folder_path_clone = folder_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        super::video::scan_videos_sync(folder_path_clone)
+    })
+    .await
+    .map_err(|e| {
+        let mut state = SERVER_STATE.lock();
+        *state = ServerState::Stopped;
+        AppError::Other(format!("扫描任务执行失败: {}", e))
+    })??;
 
+    let ips = get_local_ips();
     let ips_clone = ips.clone();
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -41,31 +50,43 @@ pub fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerI
         let _ = tx.send(result);
     });
 
-    match rx.recv() {
-        Ok(Ok(handles)) => {
-            let mut state = SERVER_STATE.lock();
-            *state = ServerState::Running;
+    let server_result = tauri::async_runtime::spawn_blocking(move || {
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+    })
+    .await
+    .map_err(|e| {
+        let mut state = SERVER_STATE.lock();
+        *state = ServerState::Stopped;
+        AppError::Other(format!("等待服务器启动失败: {}", e))
+    })?;
+
+    match server_result {
+        Ok(Ok((server_arc, handles))) => {
+            {
+                let mut state = SERVER_STATE.lock();
+                *state = ServerState::Running;
+            }
+            SERVER_HANDLE.write().replace(server_arc);
             let mut threads = SERVER_THREADS.write();
             *threads = handles;
+            Ok(ShareServerInfo { ips, port })
         }
         Ok(Err(e)) => {
             let mut state = SERVER_STATE.lock();
             *state = ServerState::Stopped;
-            return Err(AppError::IoError(e));
+            Err(AppError::IoError(e))
         }
         Err(_) => {
             let mut state = SERVER_STATE.lock();
             *state = ServerState::Stopped;
-            return Err(AppError::IoError("服务器线程通信失败".to_string()));
+            Err(AppError::IoError("服务器启动超时".to_string()))
         }
     }
-
-    Ok(ShareServerInfo { ips, port })
 }
 
 #[tauri::command]
-pub fn stop_share_server() -> Result<(), AppError> {
-    {
+pub async fn stop_share_server() -> Result<(), AppError> {
+    let worker_count = {
         let mut state = SERVER_STATE.lock();
         match *state {
             ServerState::Stopped | ServerState::Stopping => {
@@ -76,12 +97,16 @@ pub fn stop_share_server() -> Result<(), AppError> {
             }
             ServerState::Running => {
                 *state = ServerState::Stopping;
+                SERVER_THREADS.read().len()
             }
         }
-    }
+    };
 
-    if let Some(server) = crate::SERVER_HANDLE.write().take() {
-        server.unblock();
+    if let Some(server) = SERVER_HANDLE.write().take() {
+        for _ in 0..worker_count.max(1) {
+            server.unblock();
+        }
+        drop(server);
     }
 
     let handles = {
@@ -89,8 +114,12 @@ pub fn stop_share_server() -> Result<(), AppError> {
         std::mem::take(&mut *threads)
     };
 
-    for handle in handles {
-        let _ = handle.join();
+    if !handles.is_empty() {
+        std::thread::spawn(move || {
+            for handle in handles {
+                let _ = handle.join();
+            }
+        });
     }
 
     {

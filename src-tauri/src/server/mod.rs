@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{SERVER_STATE, ServerState};
 
-pub fn start_http_server(ips: &[String], port: u16) -> Result<Vec<std::thread::JoinHandle<()>>, String> {
+pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Server>, Vec<std::thread::JoinHandle<()>>), String> {
     let addr = format!("0.0.0.0:{}", port);
     let ips = ips.to_vec();
 
@@ -15,7 +15,6 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<Vec<std::thread::J
         .map_err(|e| format!("启动服务器失败: {}", e))?;
 
     let server = Arc::new(server);
-    crate::SERVER_HANDLE.write().replace(server.clone());
 
     let worker_count = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -27,20 +26,32 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<Vec<std::thread::J
         let server = server.clone();
         let ips = ips.clone();
         let handle = std::thread::spawn(move || {
-            for mut request in server.incoming_requests() {
-                let running = {
+            loop {
+                {
                     let state = SERVER_STATE.lock();
-                    matches!(*state, ServerState::Running)
-                };
-                if !running {
-                    break;
+                    if !matches!(*state, ServerState::Running) {
+                        break;
+                    }
                 }
-                let resp = handler::handle_request(&mut request, &ips, port);
-                request.respond(resp).ok();
+
+                match server.incoming_requests().next() {
+                    Some(mut request) => {
+                        let running = {
+                            let state = SERVER_STATE.lock();
+                            matches!(*state, ServerState::Running)
+                        };
+                        if !running {
+                            break;
+                        }
+                        let resp = handler::handle_request(&mut request, &ips, port);
+                        request.respond(resp).ok();
+                    }
+                    None => break,
+                }
             }
         });
         handles.push(handle);
     }
 
-    Ok(handles)
+    Ok((server, handles))
 }
