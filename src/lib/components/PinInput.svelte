@@ -1,3 +1,7 @@
+<!--
+  PinInput 组件
+  4 位数字密码输入面板，包含数字键盘、输入框动画、错误/成功提示
+-->
 <script lang="ts">
   interface Props {
     submitting: boolean;

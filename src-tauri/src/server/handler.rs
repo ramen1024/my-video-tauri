@@ -1,19 +1,40 @@
+//! HTTP 请求路由与处理
+//!
+//! 根据请求 URL 和方法分发到对应的处理逻辑：
+//! - `POST /auth`: 密码认证
+//! - `GET /`: 首页（视频列表 HTML）
+//! - `GET /videos`: 视频列表 JSON API
+//! - `GET /refresh`: 触发视频重新扫描
+//! - `GET /refresh-status`: 查询刷新结果
+//! - `GET /video/*`: 视频文件流式服务
+//! - 其他: 404
+//!
+//! 密码保护启用时，未认证请求会被重定向到登录页。
+
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::password;
 use crate::SHARED_VIDEOS;
 
+/// 登录页面 HTML 模板（编译时嵌入）
 static LOGIN_PAGE: &str = include_str!("../login_template.html");
+/// 刷新操作是否正在进行中（防止并发刷新）
 static REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+/// 刷新冷却标志（5 秒内不允许再次刷新）
 static REFRESH_COOLDOWN: AtomicBool = AtomicBool::new(false);
 
 use parking_lot::RwLock;
 use std::sync::LazyLock;
 
+/// 最近一次刷新操作的结果（JSON 字符串）
 static REFRESH_RESULT: LazyLock<RwLock<Option<String>>> =
     LazyLock::new(|| RwLock::new(None));
 
+/// HTTP 请求主处理函数
+///
+/// 根据请求 URL 和方法路由到对应的处理逻辑。
+/// 密码保护启用时，未认证请求会被重定向到 `/login`。
 pub fn handle_request(
     request: &mut tiny_http::Request,
     ips: &[String],

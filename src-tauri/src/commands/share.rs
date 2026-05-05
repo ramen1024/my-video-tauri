@@ -1,3 +1,8 @@
+//! 局域网共享服务器命令
+//!
+//! 提供共享服务器的启动、停止和状态查询等 Tauri IPC 命令。
+//! 启动服务器时会先扫描视频，然后启动 HTTP 服务器监听指定端口。
+
 use std::path::Path;
 
 use crate::error::AppError;
@@ -6,11 +11,16 @@ use crate::utils::get_local_ips;
 use crate::server;
 use crate::{SERVER_HANDLE, SERVER_STATE, SERVER_THREADS, ServerState};
 
+/// 更新服务器状态（内部辅助函数）
 fn set_server_state(state: ServerState) {
     let mut s = SERVER_STATE.lock();
     *s = state;
 }
 
+/// 启动局域网共享服务器
+///
+/// 流程：状态检查 → 扫描视频 → 启动 HTTP 服务器 → 等待就绪
+/// 服务器在独立线程中运行，通过 channel 通知启动结果
 #[tauri::command]
 pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareServerInfo, AppError> {
     {
@@ -98,6 +108,9 @@ pub async fn start_share_server(folder_path: String, port: u16) -> Result<ShareS
     }
 }
 
+/// 停止局域网共享服务器
+///
+/// 通过 unblock 通知各 worker 线程退出，并在后台等待它们结束
 #[tauri::command]
 pub async fn stop_share_server() -> Result<(), AppError> {
     let worker_count = {
@@ -147,6 +160,7 @@ pub async fn stop_share_server() -> Result<(), AppError> {
     Ok(())
 }
 
+/// 查询共享服务器是否正在运行
 #[tauri::command]
 pub fn get_server_status() -> bool {
     matches!(*SERVER_STATE.lock(), ServerState::Running)

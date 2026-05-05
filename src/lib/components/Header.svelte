@@ -1,3 +1,7 @@
+<!--
+  Header 组件
+  应用顶部导航栏，包含选择文件夹、刷新扫描、开启/停止共享等操作按钮
+-->
 <script lang="ts">
   interface Props {
     isScanning: boolean;

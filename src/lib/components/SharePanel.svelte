@@ -1,3 +1,7 @@
+<!--
+  SharePanel 组件
+  局域网共享信息面板，显示二维码、IP 地址列表和防火墙提示
+-->
 <script lang="ts">
   import type { ShareServerInfo } from "$lib/types";
   import { generateQRCodeDataURL } from "$lib/utils/qrcode";

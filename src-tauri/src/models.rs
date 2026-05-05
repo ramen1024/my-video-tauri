@@ -1,3 +1,7 @@
+//! 数据模型定义
+//!
+//! 定义视频文件和共享服务器信息的结构体，用于 Tauri IPC 通信和 HTTP API 响应。
+
 use serde::Serialize;
 
 /// 视频文件信息结构体

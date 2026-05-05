@@ -1,3 +1,8 @@
+//! 视频文件流式服务
+//!
+//! 处理 `/video/*` 请求，支持 HTTP Range 请求（部分内容），
+//! 使浏览器可以拖动视频进度条进行 seek 操作。
+
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -5,6 +10,10 @@ use std::path::Path;
 use crate::utils::sanitize_video_path;
 use crate::SHARED_FOLDER_PATH;
 
+/// 处理视频文件请求
+///
+/// 解析 URL 中的视频路径，验证安全性后返回文件内容。
+/// 支持 Range 请求头，返回 206 Partial Content 响应。
 pub fn handle_video_request(
     url: &str,
     range_header: Option<&str>,

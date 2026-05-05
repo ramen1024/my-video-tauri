@@ -1,12 +1,18 @@
+//! 工具函数模块
+//!
+//! 提供路径验证、IP 检测、URL 解码等通用工具函数。
+
 use std::path::Path;
 use std::sync::LazyLock;
 use std::time::SystemTime;
 
 use parking_lot::RwLock;
 
+/// IP 地址缓存，存储 (IP列表, 缓存时间)
 static CACHED_IPS: LazyLock<RwLock<Option<(Vec<String>, std::time::Instant)>>> =
     LazyLock::new(|| RwLock::new(None));
 
+/// IP 缓存有效期（5 分钟）
 const IP_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// 将系统时间格式化为可读字符串
@@ -76,6 +82,9 @@ pub fn get_local_ips() -> Vec<String> {
     ips
 }
 
+/// 实际检测本机 IP 地址（通过 if-addrs crate 调用系统 API）
+///
+/// 过滤掉回环地址，如果获取失败则回退到 127.0.0.1
 fn detect_local_ips() -> Vec<String> {
     match if_addrs::get_if_addrs() {
         Ok(interfaces) => {

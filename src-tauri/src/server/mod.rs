@@ -1,3 +1,14 @@
+//! HTTP 共享服务器模块
+//!
+//! 基于 tiny_http 实现的轻量级 HTTP 服务器，用于局域网视频共享。
+//! 采用多 worker 线程模型，worker 数量等于 CPU 核心数。
+//!
+//! 子模块职责：
+//! - `handler`: 请求路由与处理
+//! - `auth`: 密码认证接口
+//! - `video_serve`: 视频文件服务（支持 Range 请求）
+//! - `response`: HTTP 响应构造工具
+
 mod handler;
 mod response;
 mod auth;
@@ -7,6 +18,14 @@ use std::sync::Arc;
 
 use crate::{SERVER_STATE, ServerState};
 
+/// 启动 HTTP 服务器
+///
+/// 绑定 `0.0.0.0:port` 监听所有网络接口，创建多 worker 线程处理请求。
+/// 每个 worker 循环接收请求并交给 handler 处理，直到服务器状态变为非 Running。
+///
+/// # 返回
+/// - `Ok((server, handles))`: 服务器实例和 worker 线程句柄
+/// - `Err(msg)`: 绑定端口失败时的错误信息
 pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Server>, Vec<std::thread::JoinHandle<()>>), String> {
     let addr = format!("0.0.0.0:{}", port);
     let ips = ips.to_vec();

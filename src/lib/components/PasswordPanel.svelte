@@ -1,3 +1,7 @@
+<!--
+  PasswordPanel 组件
+  密码保护管理面板，支持开启/关闭保护、随机生成密码、手动输入密码、复制和清除
+-->
 <script lang="ts">
   import { getPasswordStatus, setPasswordEnabled, setPassword, generateRandomPassword, resetPassword } from "$lib/services/password";
   import type { PasswordStatus } from "$lib/types";

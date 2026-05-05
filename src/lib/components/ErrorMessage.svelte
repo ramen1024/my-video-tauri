@@ -1,3 +1,7 @@
+<!--
+  ErrorMessage 组件
+  显示错误提示消息，5 秒后自动消失，支持手动关闭
+-->
 <script lang="ts">
   import { onDestroy } from "svelte";
 

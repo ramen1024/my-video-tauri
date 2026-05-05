@@ -1,9 +1,18 @@
+//! HTTP 密码认证处理
+//!
+//! 处理 `POST /auth` 请求，验证密码并设置 session cookie。
+
 use std::io::Read;
 
 use crate::password;
 
+/// 请求体最大允许大小（字节），防止恶意大请求
 const MAX_BODY_SIZE: u64 = 1024;
 
+/// 处理密码认证请求
+///
+/// 从请求体中解析密码，调用 password 模块进行认证。
+/// 认证成功时设置 HttpOnly + SameSite=Strict 的 session cookie。
 pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<dyn Read + Send>> {
     password::cleanup_expired_sessions();
 

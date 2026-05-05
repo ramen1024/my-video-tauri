@@ -1,3 +1,7 @@
+<!--
+  主页面
+  应用的唯一页面，编排所有子组件，管理全局状态（视频列表、共享状态、密码状态等）
+-->
 <script lang="ts">
   import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";

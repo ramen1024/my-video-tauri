@@ -1,3 +1,8 @@
+//! 应用错误类型定义
+//!
+//! 使用结构化枚举替代 String 类型错误，便于前端根据错误类型进行针对性处理。
+//! 通过 `#[serde(tag, content)]` 序列化为 `{ "type": "InvalidPath", "message": "..." }` 格式。
+
 use serde::Serialize;
 use std::fmt;
 

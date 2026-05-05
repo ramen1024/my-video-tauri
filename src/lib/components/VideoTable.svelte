@@ -1,3 +1,7 @@
+<!--
+  VideoTable 组件
+  视频文件列表表格，支持按名称/大小/日期排序和搜索过滤
+-->
 <script lang="ts">
   import { onDestroy } from "svelte";
   import type { VideoFile, SortField, SortDirection } from "$lib/types";

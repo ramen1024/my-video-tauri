@@ -1,3 +1,7 @@
+<!--
+  VideoPlayer 组件
+  全屏视频播放器，使用 Tauri 的 asset 协议加载本地视频，支持 ESC 关闭
+-->
 <script lang="ts">
   import { onMount } from "svelte";
   import type { VideoFile } from "$lib/types";

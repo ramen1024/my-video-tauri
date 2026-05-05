@@ -1,3 +1,8 @@
+//! 视频扫描与管理命令
+//!
+//! 提供视频文件的扫描、获取、播放和取消扫描等 Tauri IPC 命令。
+//! 扫描使用 rayon 并行处理，支持通过 CANCEL_SCAN_FLAG 取消正在进行的扫描。
+
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -12,10 +17,15 @@ use crate::{CANCEL_SCAN_FLAG, SHARED_VIDEOS, SHARED_FOLDER_PATH};
 
 use std::sync::Arc;
 
+/// 支持的视频文件扩展名
 const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
 ];
 
+/// 扫描指定文件夹中的视频文件
+///
+/// 在阻塞线程中执行扫描，完成后返回全局共享的视频列表。
+/// 扫描结果同时写入 SHARED_VIDEOS 和 SHARED_FOLDER_PATH 全局状态。
 #[tauri::command]
 pub async fn scan_videos(folder_path: String) -> Result<Arc<Vec<VideoFile>>, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -26,6 +36,9 @@ pub async fn scan_videos(folder_path: String) -> Result<Arc<Vec<VideoFile>>, App
     .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))?
 }
 
+/// 同步执行视频扫描（在 spawn_blocking 中调用）
+///
+/// 流程：验证路径 → 遍历文件 → 并行提取元数据 → 按名称排序 → 写入全局状态
 pub(crate) fn scan_videos_sync(folder_path: String) -> Result<(), AppError> {
     let path = Path::new(&folder_path);
 
@@ -123,16 +136,21 @@ pub(crate) fn scan_videos_sync(folder_path: String) -> Result<(), AppError> {
     Ok(())
 }
 
+/// 获取当前共享的视频列表
 #[tauri::command]
 pub fn get_shared_videos() -> Result<Arc<Vec<VideoFile>>, AppError> {
     Ok(SHARED_VIDEOS.read().clone())
 }
 
+/// 取消正在进行的视频扫描
 #[tauri::command]
 pub fn cancel_scan() {
     CANCEL_SCAN_FLAG.store(true, Ordering::Relaxed);
 }
 
+/// 使用系统默认播放器打开视频文件
+///
+/// 安全检查：仅允许打开视频扩展名文件，且必须在共享文件夹路径内
 #[tauri::command]
 pub fn play_video(file_path: String) -> Result<(), AppError> {
     let path = Path::new(&file_path);
