@@ -57,10 +57,10 @@ pub fn is_root_directory(path: &Path) -> bool {
 /// 获取本机所有可用的 IP 地址
 ///
 /// # 实现方式
-/// Windows: 执行 ipconfig 命令并解析输出（支持中英文 locale）
+/// 通过 if-addrs crate 直接调用系统 API 获取网络接口地址
 ///
 /// # 返回
-/// IP 地址列表，过滤掉 127.x.x.x 回环地址
+/// IP 地址列表，过滤掉回环地址
 pub fn get_local_ips() -> Vec<String> {
     {
         let cache = CACHED_IPS.read();
@@ -77,41 +77,28 @@ pub fn get_local_ips() -> Vec<String> {
 }
 
 fn detect_local_ips() -> Vec<String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        let output = std::process::Command::new("cmd")
-            .args(["/C", "ipconfig"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-
-        let mut ips = Vec::new();
-        if let Ok(output) = output {
-            let output_str = String::from_utf8_lossy(&output.stdout);
-            for line in output_str.lines() {
-                let lower_line = line.to_lowercase();
-                if (lower_line.contains("ipv4") || lower_line.contains("ip address"))
-                    && line.contains(':')
-                {
-                    if let Some(ip) = line.split(':').last() {
-                        let ip = ip.trim();
-                        if !ip.is_empty() && !ip.starts_with("127") {
-                            ips.push(ip.to_string());
-                        }
+    match if_addrs::get_if_addrs() {
+        Ok(interfaces) => {
+            let ips: Vec<String> = interfaces
+                .into_iter()
+                .filter_map(|iface| {
+                    if iface.is_loopback() {
+                        None
+                    } else {
+                        Some(iface.addr.ip().to_string())
                     }
-                }
+                })
+                .collect();
+            if ips.is_empty() {
+                vec!["127.0.0.1".to_string()]
+            } else {
+                ips
             }
         }
-        if ips.is_empty() {
-            ips.push("127.0.0.1".to_string());
+        Err(e) => {
+            log::warn!("[网络] 获取本机IP失败: {}", e);
+            vec!["127.0.0.1".to_string()]
         }
-        ips
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        vec!["127.0.0.1".to_string()]
     }
 }
 

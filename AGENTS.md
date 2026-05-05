@@ -54,9 +54,9 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - Vite dev server fixed on port 1420; HMR on 1421
 - `qrcode-generator` is dynamically imported — don't add it as a top-level import
 - `html_template.html` and `login_template.html` are embedded via `include_str!` in server/handler.rs — paths are relative to that file
-- `capabilities/default.json` has broad `fs:allow-read-file` and `shell:allow-execute` permissions — be cautious when adding new capabilities
+- `capabilities/default.json` uses minimal permissions (`core:default`, `opener:default`, `dialog:default`) — no filesystem permissions
 
 ## Windows-specific
 
-- `get_local_ips()` parses `ipconfig` output — handles both Chinese ("IPv4 地址") and English ("IPv4 Address") locales
+- `get_local_ips()` uses `if-addrs` crate to get network interfaces via system API (no subprocess, no console window)
 - Paths use backslash; `getVideoSrc()` in frontend normalizes to forward slash for `convertFileSrc`
