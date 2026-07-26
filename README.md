@@ -43,8 +43,14 @@
 4. 即可访问视频列表并在线播放
 
 ### 4. 刷新数据
-- 点击"刷新"按钮可重新扫描文件夹
+- 点击“刷新”按钮可重新扫描文件夹
 - 网页端每 30 秒自动刷新一次
+
+## 安全提示
+
+- 局域网共享通过 **HTTP 明文传输**，建议仅在可信的家庭或办公局域网中使用，避免在公共网络中开启共享。
+- 用户设置的密码使用 **Argon2id + 随机 salt** 进行哈希存储，不会以明文形式保存。
+- 默认的 4 位数字密码本身熵较低，主要作用是防止随意访问，**不应作为高强度安全认证手段**。如需更高安全性，请设置更复杂的密码并在可信网络中使用。
 
 ## 技术栈
 
@@ -54,9 +60,34 @@
 - **并行处理**：Rayon
 - **UI 设计**：Glassmorphism 风格
 
+## 开发环境与构建
+
+### 环境要求
+
+- [Rust](https://www.rust-lang.org/) 工具链，建议 **1.80 或更高版本**
+- [Node.js](https://nodejs.org/) + [pnpm](https://pnpm.io/) 包管理器
+
+### 常用命令
+
+```powershell
+# 仅启动前端开发服务器（Vite + SvelteKit）
+pnpm dev
+
+# 启动完整 Tauri 桌面应用开发模式
+pnpm tauri dev
+
+# 构建 release 版本（前端 + Rust + 安装包）
+pnpm tauri build
+```
+
+### Windows 平台说明
+
+- 构建 Windows 安装包需要安装 [Microsoft C++ 生成工具](https://visualstudio.microsoft.com/visual-cpp-build-tools/) 或 Visual Studio 的“使用 C++ 的桌面开发”工作负载。
+- 项目通过 `if-addrs` crate 获取本机网络接口信息，无需调用外部子进程。
+
 ## 最近更新
 
-### v0.2.9
+### v0.3.1
 - 实现单数据源架构，软件端和网页端数据同步
 - 优化扫描性能，使用 Rayon 实现并行处理
 - 修复网页端视频播放问题

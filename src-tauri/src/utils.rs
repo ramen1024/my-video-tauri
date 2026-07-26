@@ -142,3 +142,119 @@ pub fn sanitize_video_path(base: &Path, requested: &str) -> Option<std::path::Pa
         None
     }
 }
+
+/// 将字节数格式化为人类可读的文件大小字符串
+///
+/// 示例: 1536 → "1.5 KB", 1073741824 → "1 GB"
+#[allow(dead_code)]
+pub fn format_file_size(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+
+    const K: f64 = 1024.0;
+    const SIZES: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+
+    let mut size = bytes as f64;
+    let mut index = 0;
+    while size >= K && index < SIZES.len() - 1 {
+        size /= K;
+        index += 1;
+    }
+
+    let formatted = format!("{:.2}", size);
+    let trimmed = formatted
+        .trim_end_matches('0')
+        .trim_end_matches('.');
+
+    format!("{} {}", trimmed, SIZES[index])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let mut name = prefix.to_string();
+        name.push_str("_");
+        name.push_str(&std::process::id().to_string());
+        name.push_str("_");
+        name.push_str(&std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .to_string());
+        let path = std::env::temp_dir().join(name);
+        fs::create_dir_all(&path).expect("创建临时目录失败");
+        path
+    }
+
+    #[test]
+    fn test_format_file_size_bytes() {
+        assert_eq!(format_file_size(0), "0 B");
+        assert_eq!(format_file_size(100), "100 B");
+        assert_eq!(format_file_size(1023), "1023 B");
+    }
+
+    #[test]
+    fn test_format_file_size_kb() {
+        assert_eq!(format_file_size(1024), "1 KB");
+        assert_eq!(format_file_size(1536), "1.5 KB");
+        assert_eq!(format_file_size(2048), "2 KB");
+    }
+
+    #[test]
+    fn test_format_file_size_mb() {
+        assert_eq!(format_file_size(1024 * 1024), "1 MB");
+        assert_eq!(format_file_size(1024 * 1024 + 512 * 1024), "1.5 MB");
+    }
+
+    #[test]
+    fn test_format_file_size_gb() {
+        assert_eq!(format_file_size(1024 * 1024 * 1024), "1 GB");
+        assert_eq!(
+            format_file_size(1024 * 1024 * 1024 + 512 * 1024 * 1024),
+            "1.5 GB"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_video_path_traversal() {
+        let base = make_temp_dir("sanitize_traversal");
+        let result = sanitize_video_path(&base, "../../etc/passwd");
+        assert!(result.is_none(), "路径遍历攻击应被阻止");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_sanitize_video_path_valid() {
+        let base = make_temp_dir("sanitize_valid");
+        let file_path = base.join("movie.mp4");
+        fs::File::create(&file_path).expect("创建测试文件失败");
+
+        let result = sanitize_video_path(&base, "movie.mp4");
+        assert!(result.is_some(), "合法路径应被允许");
+        assert_eq!(
+            result.unwrap(),
+            file_path.canonicalize().unwrap(),
+            "返回的路径应与规范路径一致"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn test_is_root_directory() {
+        assert!(is_root_directory(Path::new("C:\\")), "Windows 根目录应被识别");
+        assert!(is_root_directory(Path::new("/")), "Unix 根目录应被识别");
+        assert!(
+            !is_root_directory(Path::new("C:\\Users")),
+            "普通 Windows 子目录不应是根目录"
+        );
+        assert!(
+            !is_root_directory(Path::new("/home")),
+            "普通 Unix 子目录不应是根目录"
+        );
+    }
+}

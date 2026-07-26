@@ -128,3 +128,93 @@ impl VideoCache {
         self.save()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::VideoFile;
+    use std::fs;
+
+    fn make_temp_dir(prefix: &str) -> PathBuf {
+        let mut name = prefix.to_string();
+        name.push_str("_");
+        name.push_str(&std::process::id().to_string());
+        name.push_str("_");
+        name.push_str(&std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .to_string());
+        let path = std::env::temp_dir().join(name);
+        fs::create_dir_all(&path).expect("创建临时目录失败");
+        path
+    }
+
+    fn sample_entry(folder_modified_time: u64) -> VideoCacheEntry {
+        VideoCacheEntry {
+            videos: vec![VideoFile {
+                name: "test.mp4".to_string(),
+                path: "/tmp/test.mp4".to_string(),
+                relative_path: "test.mp4".to_string(),
+                size: 1234,
+                modified: None,
+                extension: "mp4".to_string(),
+            }],
+            folder_modified_time,
+            cached_at: 0,
+        }
+    }
+
+    #[test]
+    fn test_cache_get_when_mtime_matches() {
+        let cache_dir = make_temp_dir("cache_match");
+        let mut cache = VideoCache::new(cache_dir.clone());
+        cache
+            .set("/fake/folder".to_string(), sample_entry(42))
+            .expect("保存缓存应成功");
+
+        let result = cache.get("/fake/folder", 42);
+        assert!(result.is_some(), "mtime 匹配时应返回缓存");
+        assert_eq!(result.unwrap().folder_modified_time, 42);
+        let _ = fs::remove_dir_all(&cache_dir);
+    }
+
+    #[test]
+    fn test_cache_get_when_mtime_differs() {
+        let cache_dir = make_temp_dir("cache_diff");
+        let mut cache = VideoCache::new(cache_dir.clone());
+        cache
+            .set("/fake/folder".to_string(), sample_entry(42))
+            .expect("保存缓存应成功");
+
+        let result = cache.get("/fake/folder", 43);
+        assert!(result.is_none(), "mtime 不同时应返回 None");
+        let _ = fs::remove_dir_all(&cache_dir);
+    }
+
+    #[test]
+    fn test_cache_save_and_load() {
+        let cache_dir = make_temp_dir("cache_load");
+        let folder = "/fake/folder";
+
+        {
+            let mut cache = VideoCache::new(cache_dir.clone());
+            cache
+                .set(folder.to_string(), sample_entry(100))
+                .expect("保存缓存应成功");
+        }
+
+        {
+            let mut cache = VideoCache::new(cache_dir.clone());
+            cache.load().expect("加载缓存应成功");
+            let result = cache.get(folder, 100);
+            assert!(result.is_some(), "加载后应能获取到缓存");
+            let entry = result.unwrap();
+            assert_eq!(entry.folder_modified_time, 100);
+            assert_eq!(entry.videos.len(), 1);
+            assert_eq!(entry.videos[0].name, "test.mp4");
+        }
+
+        let _ = fs::remove_dir_all(&cache_dir);
+    }
+}

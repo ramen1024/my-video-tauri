@@ -438,3 +438,67 @@ fn extract_session_token(cookie_header: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_password_argon2id() {
+        let hash = hash_password_argon2id("1234").expect("哈希应成功");
+        assert!(
+            hash.starts_with("$argon2id$"),
+            "PHC 字符串应以 $argon2id$ 开头"
+        );
+    }
+
+    #[test]
+    fn test_verify_password_argon2id_correct() {
+        let password = "5678";
+        let hash = hash_password_argon2id(password).expect("哈希应成功");
+        let result = verify_password_argon2id(password, &hash).expect("验证不应报错");
+        assert!(result, "正确密码应验证通过");
+    }
+
+    #[test]
+    fn test_verify_password_argon2id_wrong() {
+        let hash = hash_password_argon2id("0000").expect("哈希应成功");
+        let result = verify_password_argon2id("9999", &hash).expect("验证不应报错");
+        assert!(!result, "错误密码应验证失败");
+    }
+
+    #[test]
+    fn test_legacy_sha256_recognized() {
+        let sha256_hash = "a".repeat(64);
+        assert!(
+            is_legacy_sha256_hash(&sha256_hash),
+            "64 位十六进制字符串应被识别为旧版 SHA-256 哈希"
+        );
+
+        let phc_hash = "$argon2id$v=19$m=19456,t=2,p=1$...$...";
+        assert!(
+            !is_legacy_sha256_hash(phc_hash),
+            "PHC 字符串不应被识别为旧版 SHA-256 哈希"
+        );
+    }
+
+    #[test]
+    fn test_set_password_validation() {
+        assert!(
+            set_password("123").is_err(),
+            "少于 4 位的密码应校验失败"
+        );
+        assert!(
+            set_password("12345").is_err(),
+            "多于 4 位的密码应校验失败"
+        );
+        assert!(
+            set_password("abcd").is_err(),
+            "非数字密码应校验失败"
+        );
+        assert!(
+            set_password("12a4").is_err(),
+            "包含非数字字符的密码应校验失败"
+        );
+    }
+}
