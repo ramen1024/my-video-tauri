@@ -2,10 +2,10 @@
 //!
 //! 定义视频文件和共享服务器信息的结构体，用于 Tauri IPC 通信和 HTTP API 响应。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// 视频文件信息结构体
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VideoFile {
     /// 文件名（不含路径）
     pub name: String,

@@ -4,6 +4,7 @@
 //! 前端通过 Tauri IPC 调用 commands 模块中注册的命令，
 //! 后端通过 server 模块提供局域网 HTTP 共享服务。
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -18,6 +19,7 @@ mod models;
 mod password;
 mod server;
 mod utils;
+mod video_cache;
 
 pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
@@ -60,6 +62,8 @@ pub struct AppState {
     refresh_cooldown: Arc<AtomicBool>,
     /// 最近一次刷新操作的结果（JSON 字符串）
     refresh_result: Arc<RwLock<Option<String>>>,
+    /// 视频扫描结果缓存
+    video_cache: Arc<Mutex<video_cache::VideoCache>>,
 }
 
 impl AppState {
@@ -75,6 +79,9 @@ impl AppState {
             refresh_in_progress: Arc::new(AtomicBool::new(false)),
             refresh_cooldown: Arc::new(AtomicBool::new(false)),
             refresh_result: Arc::new(RwLock::new(None)),
+            video_cache: Arc::new(Mutex::new(video_cache::VideoCache::new(
+                std::env::temp_dir(),
+            ))),
         }
     }
 
@@ -98,6 +105,18 @@ impl AppState {
     /// 设置当前共享的文件夹路径
     pub fn set_shared_folder_path(&self, path: String) {
         *self.shared_folder_path.write() = path;
+    }
+
+    // ---------------- 视频扫描缓存 ----------------
+
+    /// 获取视频缓存的内部引用
+    pub fn video_cache(&self) -> &Arc<Mutex<video_cache::VideoCache>> {
+        &self.video_cache
+    }
+
+    /// 重新设置视频缓存目录（例如使用 app_data_dir）
+    pub fn set_video_cache_dir(&self, cache_dir: PathBuf) {
+        self.video_cache.lock().set_cache_dir(cache_dir);
     }
 
     // ---------------- 扫描取消标志 ----------------
@@ -277,12 +296,16 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            let app_state = AppState::new();
+
             if let Ok(data_dir) = app.path().app_data_dir() {
-                password::set_config_dir(data_dir);
+                password::set_config_dir(data_dir.clone());
+                app_state.set_video_cache_dir(data_dir);
             }
+
             password::load_password_config();
             password::start_cleanup_thread();
-            app.manage(AppState::new());
+            app.manage(app_state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

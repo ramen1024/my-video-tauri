@@ -11,14 +11,31 @@
 //!
 //! 密码保护启用时，未认证请求会被重定向到登录页。
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 
 use crate::constants::REFRESH_COOLDOWN_SECS;
+use crate::models::VideoFile;
 use crate::password;
 use crate::AppState;
 
 /// 登录页面 HTML 模板（编译时嵌入）
 static LOGIN_PAGE: &str = include_str!("../login_template.html");
+
+/// 为视频列表计算 ETag
+///
+/// 基于视频数量、总大小、第一个和最后一个视频的关键字段生成一个短标识。
+fn compute_videos_etag(videos: &[VideoFile]) -> String {
+    let count = videos.len();
+    let total_size: u64 = videos.iter().map(|v| v.size).sum();
+    let first = videos.first().map(|v| (v.relative_path.clone(), v.size));
+    let last = videos.last().map(|v| (v.relative_path.clone(), v.size));
+
+    let mut hasher = DefaultHasher::new();
+    (count, total_size, first, last).hash(&mut hasher);
+    hasher.finish().to_string()
+}
 
 /// HTTP 请求主处理函数
 ///
@@ -67,14 +84,34 @@ pub fn handle_request(
         }
         "/videos" => {
             let videos = app_state.shared_videos();
+            let etag = format!("\"{}\"", compute_videos_etag(&videos));
+
+            let if_none_match = request
+                .headers()
+                .iter()
+                .find(|h| h.field.as_str() == "If-None-Match")
+                .map(|h| h.value.as_str());
+
+            if if_none_match == Some(etag.as_str()) {
+                let mut resp = super::response::text_response(304, "");
+                resp.add_header(
+                    tiny_http::Header::from_bytes(&b"ETag"[..], etag.as_bytes()).unwrap(),
+                );
+                resp.add_header(
+                    tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"must-revalidate"[..])
+                        .unwrap(),
+                );
+                return resp;
+            }
+
             let json = serde_json::to_string(&*videos).unwrap_or_else(|_| "[]".to_string());
             let mut resp = super::response::json_response(200, &json);
             resp.add_header(
-                tiny_http::Header::from_bytes(
-                    &b"Cache-Control"[..],
-                    &b"no-cache, no-store, must-revalidate"[..],
-                )
-                .unwrap(),
+                tiny_http::Header::from_bytes(&b"ETag"[..], etag.as_bytes()).unwrap(),
+            );
+            resp.add_header(
+                tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"must-revalidate"[..])
+                    .unwrap(),
             );
             resp
         }
@@ -104,7 +141,11 @@ pub fn handle_request(
             let scan_app_state = app_state.clone();
             std::thread::spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    match crate::commands::video::scan_videos_sync(folder_path, &scan_app_state) {
+                    match crate::commands::video::scan_videos_sync(
+                        folder_path,
+                        &scan_app_state,
+                        false,
+                    ) {
                         Ok(_) => {
                             serde_json::json!({"success": true, "message": "视频列表已刷新"})
                                 .to_string()

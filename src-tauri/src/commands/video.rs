@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
 use rayon::prelude::*;
 use tauri::State;
@@ -15,6 +16,7 @@ use crate::constants::{MIN_VIDEO_FILE_SIZE_BYTES, VIDEO_SUPPORTED_EXTENSIONS};
 use crate::error::AppError;
 use crate::models::VideoFile;
 use crate::utils::{format_system_time, is_root_directory};
+use crate::video_cache::VideoCacheEntry;
 use crate::AppState;
 
 /// 扫描指定文件夹中的视频文件
@@ -28,7 +30,7 @@ pub async fn scan_videos(
 ) -> Result<Arc<Vec<VideoFile>>, AppError> {
     let app_state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        scan_videos_sync(folder_path, &app_state)?;
+        scan_videos_sync(folder_path, &app_state, true)?;
         Ok(app_state.shared_videos())
     })
     .await
@@ -37,10 +39,17 @@ pub async fn scan_videos(
 
 /// 同步执行视频扫描（在 spawn_blocking 中调用）
 ///
-/// 流程：验证路径 → 遍历文件 → 并行提取元数据 → 按名称排序 → 写入 AppState
+/// 流程：验证路径 → 检查缓存 → 遍历文件 → 并行提取元数据 → 按名称排序 → 写入 AppState
+///
+/// # 参数
+/// - `folder_path`: 要扫描的文件夹路径
+/// - `app_state`: 应用状态
+/// - `use_cache`: 是否允许使用缓存。正常扫描为 `true`；手动刷新应为 `false`，
+///   但扫描完成后仍会将结果写回缓存。
 pub(crate) fn scan_videos_sync(
     folder_path: String,
     app_state: &AppState,
+    use_cache: bool,
 ) -> Result<(), AppError> {
     let path = Path::new(&folder_path);
 
@@ -55,6 +64,29 @@ pub(crate) fn scan_videos_sync(
         return Err(AppError::InvalidPath(
             "扫描磁盘根目录可能会花费大量时间并导致程序卡住，请选择一个具体的文件夹".to_string(),
         ));
+    }
+
+    let folder_modified_time = fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()))
+        .unwrap_or(0);
+
+    if use_cache {
+        let cached_entry = app_state
+            .video_cache()
+            .lock()
+            .get(&folder_path, folder_modified_time)
+            .cloned();
+
+        if let Some(entry) = cached_entry {
+            let count = entry.videos.len();
+            let folder = folder_path.clone();
+            app_state.set_shared_videos(entry.videos);
+            app_state.set_shared_folder_path(folder_path);
+            log::info!("[扫描] 从缓存加载 {} 个视频: {}", count, folder);
+            return Ok(());
+        }
     }
 
     let base_path = Path::new(&folder_path).to_path_buf();
@@ -129,8 +161,26 @@ pub(crate) fn scan_videos_sync(
 
     videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
+    let cached_at = chrono::Utc::now().timestamp();
+    let cache_entry = VideoCacheEntry {
+        videos: videos.clone(),
+        folder_modified_time,
+        cached_at,
+    };
+
+    if let Err(e) = app_state
+        .video_cache()
+        .lock()
+        .set(folder_path.clone(), cache_entry)
+    {
+        log::warn!("[扫描] 保存视频缓存失败: {}", e);
+    }
+
+    let video_count = videos.len();
     app_state.set_shared_videos(videos);
     app_state.set_shared_folder_path(folder_path);
+
+    log::info!("[扫描] 完成全量扫描，共 {} 个视频", video_count);
 
     Ok(())
 }
