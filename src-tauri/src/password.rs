@@ -9,18 +9,21 @@
 use std::sync::LazyLock;
 
 use parking_lot::RwLock;
-use rand::Rng;
-use sha2::{Sha256, Digest};
-
+use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use argon2::{
+    password_hash::{Error as PasswordHashError, SaltString},
+    Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
+};
+
 /// 密码保护是否启用
 static PASSWORD_ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// 密码的 SHA-256 哈希值（明文不存储）
+/// 密码的 Argon2id 哈希值（PHC 字符串格式，明文不存储）
 static PASSWORD_HASH: LazyLock<Arc<RwLock<Option<String>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(None)));
 
@@ -37,7 +40,11 @@ static FAILED_ATTEMPTS: LazyLock<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 /// Session 有效时长（秒）
-const SESSION_DURATION_SECS: i64 = 3600;
+pub const SESSION_DURATION_SECS: i64 = 3600;
+
+/// 应用特定的 pepper 值，用于在哈希前附加到密码。
+/// 该值不应存储在配置文件中；生产环境应替换为随机生成的密钥。
+const PEPPER: &str = "your-app-specific-pepper-change-in-production";
 /// 最大连续失败次数，超过后锁定 IP
 const MAX_FAILED_ATTEMPTS: u32 = 3;
 /// IP 锁定时长（秒）
@@ -101,14 +108,26 @@ pub fn set_config_dir(path: std::path::PathBuf) {
 pub fn load_password_config() {
     match config_path() {
         Ok(path) => {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(config) = serde_json::from_str::<PasswordConfig>(&content) {
-                    if let Some(hash) = config.password_hash {
-                        let mut stored_hash = PASSWORD_HASH.write();
-                        *stored_hash = Some(hash);
+            if !path.exists() {
+                log::info!("[密码配置] 配置文件不存在，使用默认设置: {:?}", path);
+                return;
+            }
+
+            match std::fs::read_to_string(&path) {
+                Ok(content) => match serde_json::from_str::<PasswordConfig>(&content) {
+                    Ok(config) => {
+                        if let Some(hash) = config.password_hash {
+                            let mut stored_hash = PASSWORD_HASH.write();
+                            *stored_hash = Some(hash);
+                        }
+                        PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
                     }
-                    PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
-                }
+                    Err(e) => log::error!(
+                        "[密码配置] JSON 解析失败（文件可能损坏）: {} 路径: {:?}",
+                        e, path
+                    ),
+                },
+                Err(e) => log::error!("[密码配置] 读取配置文件失败: {} 路径: {:?}", e, path),
             }
         }
         Err(e) => log::error!("[密码配置] 获取配置路径失败: {}", e),
@@ -121,15 +140,61 @@ fn save_password_config() {
         password_hash: PASSWORD_HASH.read().clone(),
         enabled: PASSWORD_ENABLED.load(Ordering::SeqCst),
     };
-    if let Ok(json) = serde_json::to_string_pretty(&config) {
-        match config_path() {
-            Ok(path) => {
-                if let Err(e) = std::fs::write(&path, json) {
-                    log::error!("[密码配置] 保存失败: {}", e);
+    match serde_json::to_string_pretty(&config) {
+        Ok(json) => match config_path() {
+            Ok(path) => match std::fs::write(&path, json) {
+                Ok(_) => {
+                    set_secure_file_permissions(&path);
                 }
-            }
+                Err(e) => log::error!("[密码配置] 保存失败: {} 路径: {:?}", e, path),
+            },
             Err(e) => log::error!("[密码配置] 获取配置路径失败: {}", e),
+        },
+        Err(e) => log::error!("[密码配置] JSON 序列化失败: {}", e),
+    }
+}
+
+/// 设置配置文件权限，尽量限制为仅当前用户可读写。
+#[cfg(unix)]
+fn set_secure_file_permissions(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut perms = match std::fs::metadata(path) {
+        Ok(m) => m.permissions(),
+        Err(e) => {
+            log::warn!("[密码配置] 读取文件元数据失败: {}", e);
+            return;
         }
+    };
+    perms.set_mode(0o600);
+    if let Err(e) = std::fs::set_permissions(path, perms) {
+        log::warn!("[密码配置] 设置 Unix 文件权限失败: {}", e);
+    }
+}
+
+/// 设置配置文件权限（Windows 平台）。
+///
+/// 注意：std::fs::Permissions 在 Windows 上仅支持只读标志，无法通过 mode 位实现
+/// Unix 式的 ACL 隔离。这里仅做最佳努力设置，并在日志中说明。若需要严格的
+/// 仅当前用户可读写，应额外调用 Windows API 或 PowerShell 配置 ACL。
+#[cfg(windows)]
+fn set_secure_file_permissions(path: &std::path::Path) {
+    let mut perms = match std::fs::metadata(path) {
+        Ok(m) => m.permissions(),
+        Err(e) => {
+            log::warn!("[密码配置] 读取文件元数据失败: {}", e);
+            return;
+        }
+    };
+    // Windows 上 set_mode 不生效于访问控制，仅保留非只读以便应用自身可写。
+    perms.set_readonly(false);
+    if let Err(e) = std::fs::set_permissions(path, perms) {
+        log::warn!("[密码配置] 设置 Windows 文件权限失败: {}", e);
+    } else {
+        log::info!(
+            "[密码配置] 已设置文件非只读；Windows ACL 隔离需额外配置。路径: {:?}",
+            path
+        );
     }
 }
 
@@ -163,14 +228,45 @@ pub fn generate_random_password() -> String {
     format!("{:04}", rng.random_range(0..10000))
 }
 
-/// 对密码进行 SHA-256 哈希
-fn hash_password(password: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    hex::encode(hasher.finalize())
+/// 判断给定哈希是否为旧版 SHA-256（64 位十六进制字符串）格式
+fn is_legacy_sha256_hash(hash: &str) -> bool {
+    hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// 设置密码（必须为 4 位纯数字），哈希后存储
+/// 使用 Argon2id 对密码进行哈希，返回 PHC 字符串格式。
+/// 密码在哈希前会附加 pepper，salt 随机生成。
+pub fn hash_password_argon2id(password: &str) -> Result<String, String> {
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default());
+
+    let mut salt_bytes = [0u8; 16];
+    rand::rng().fill_bytes(&mut salt_bytes);
+    let salt = SaltString::encode_b64(&salt_bytes)
+        .map_err(|e| format!("编码 salt 失败: {}", e))?;
+
+    let password_with_pepper = format!("{}{}", password, PEPPER);
+    argon2
+        .hash_password(password_with_pepper.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|e| format!("Argon2id 哈希失败: {}", e))
+}
+
+/// 使用 Argon2id 验证密码。
+/// `hash_with_salt` 应为 PHC 字符串格式（由 `hash_password_argon2id` 生成）。
+/// Argon2 crate 内部已使用恒定时间比较。
+pub fn verify_password_argon2id(password: &str, hash_with_salt: &str) -> Result<bool, String> {
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default());
+    let parsed_hash = PasswordHash::new(hash_with_salt)
+        .map_err(|e| format!("解析密码哈希失败: {}", e))?;
+
+    let password_with_pepper = format!("{}{}", password, PEPPER);
+    match argon2.verify_password(password_with_pepper.as_bytes(), &parsed_hash) {
+        Ok(_) => Ok(true),
+        Err(PasswordHashError::Password) => Ok(false),
+        Err(e) => Err(format!("验证密码失败: {}", e)),
+    }
+}
+
+/// 设置密码（必须为 4 位纯数字），使用 Argon2id 哈希后存储
 pub fn set_password(password: &str) -> Result<(), String> {
     if password.len() != 4 {
         return Err("密码必须是4位数字".to_string());
@@ -179,7 +275,7 @@ pub fn set_password(password: &str) -> Result<(), String> {
         return Err("密码只能包含数字0-9".to_string());
     }
 
-    let hash = hash_password(password);
+    let hash = hash_password_argon2id(password)?;
 
     {
         let mut stored_hash = PASSWORD_HASH.write();
@@ -194,8 +290,11 @@ pub fn verify_password(password: &str) -> Result<bool, String> {
     let hash_guard = PASSWORD_HASH.read();
     match hash_guard.as_ref() {
         Some(hash) => {
-            let computed = hash_password(password);
-            Ok(computed == *hash)
+            if is_legacy_sha256_hash(hash) {
+                log::warn!("[密码配置] 检测到旧版 SHA-256 哈希，视为未验证通过，请重新设置密码");
+                return Ok(false);
+            }
+            verify_password_argon2id(password, hash)
         }
         None => Err("未设置密码".to_string()),
     }

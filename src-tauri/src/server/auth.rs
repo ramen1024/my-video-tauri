@@ -9,6 +9,14 @@ use crate::password;
 /// 请求体最大允许大小（字节），防止恶意大请求
 const MAX_BODY_SIZE: u64 = 1024;
 
+/// Session cookie 有效期（秒），与 `password::SESSION_DURATION_SECS` 保持一致。
+const SESSION_COOKIE_MAX_AGE_SECS: i64 = password::SESSION_DURATION_SECS;
+
+/// 是否给 session cookie 附加 `Secure` 属性。
+/// 当前应用通过 HTTP 在局域网共享，无法使用 HTTPS，因此设为 false。
+/// 若未来支持 HTTPS，应将此值改为 true。
+const COOKIE_SECURE: bool = false;
+
 /// 处理密码认证请求
 ///
 /// 从请求体中解析密码，调用 password 模块进行认证。
@@ -47,10 +55,16 @@ pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<
                 Ok(token) => {
                     let json = serde_json::json!({"success": true, "token": token});
                     let mut resp = super::response::json_response(200, &json.to_string());
+                    let cookie_value = format!(
+                        "session_token={}; Path=/; Max-Age={}; HttpOnly; SameSite=Strict{}",
+                        token,
+                        SESSION_COOKIE_MAX_AGE_SECS,
+                        if COOKIE_SECURE { "; Secure" } else { "" }
+                    );
                     resp.add_header(
                         tiny_http::Header::from_bytes(
                             &b"Set-Cookie"[..],
-                            format!("session_token={}; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", token).as_bytes(),
+                            cookie_value.as_bytes(),
                         ).unwrap(),
                     );
                     resp
