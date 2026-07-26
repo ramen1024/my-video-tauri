@@ -101,7 +101,11 @@ pub fn handle_video_request(
             content_length.to_string().as_bytes(),
         )
         .unwrap(),
-        tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap(),
+        tiny_http::Header::from_bytes(
+            &b"Cache-Control"[..],
+            &b"private, max-age=3600, must-revalidate"[..],
+        )
+        .unwrap(),
     ];
 
     if has_range {

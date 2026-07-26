@@ -43,13 +43,13 @@
     }
   }
 
-  async function doScan() {
+  async function doScan(useCache: boolean = true) {
     if (!currentFolder) return;
     isScanning = true;
     errorMsg = "";
     videos = [];
     try {
-      videos = await scanVideos(currentFolder);
+      videos = await scanVideos(currentFolder, useCache);
     } catch (e) {
       const msg = parseAppError(e);
       if (msg.includes("扫描已取消")) {
@@ -60,6 +60,10 @@
     } finally {
       isScanning = false;
     }
+  }
+
+  async function refreshScan() {
+    await doScan(false);
   }
 
   function handleCancelScan() {
@@ -121,7 +125,7 @@
     {currentFolder}
     {isStartingShare}
     onSelectFolder={selectFolder}
-    onScan={doScan}
+    onScan={refreshScan}
     onStartShare={startShare}
     onStopShare={stopShare}
   />

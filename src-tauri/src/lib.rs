@@ -225,6 +225,11 @@ impl AppState {
         *self.refresh_result.write() = Some(result);
     }
 
+    /// 清空刷新结果
+    pub fn clear_refresh_result(&self) {
+        *self.refresh_result.write() = None;
+    }
+
     /// 检查是否有刷新正在进行
     pub fn is_refresh_in_progress(&self) -> bool {
         self.refresh_in_progress.load(Ordering::Acquire)

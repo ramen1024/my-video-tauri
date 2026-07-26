@@ -182,6 +182,13 @@
             border-radius: 16px;
             overflow: hidden;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            position: relative;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .video-scroll-spacer {
+            width: 1px;
         }
 
         .video-item {
@@ -192,7 +199,10 @@
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             transition: all 0.2s ease;
             cursor: pointer;
-            position: relative;
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 72px;
         }
 
         .video-item::before {
@@ -457,10 +467,15 @@
     </div>
 
     <script>
+        const ITEM_HEIGHT = 72;
+        const BUFFER_ITEMS = 5;
+
         let videos = [];
         let currentSort = { field: 'name', order: 'asc' };
         let searchTerm = '';
         let isRefreshing = false;
+        let searchDebounceTimer = null;
+        let pendingScrollUpdate = false;
 
         async function fetchVideos() {
             try {
@@ -480,6 +495,32 @@
             }
         }
 
+        async function pollRefreshStatus() {
+            const startTime = Date.now();
+            const timeout = 30000;
+            const interval = 800;
+
+            while (Date.now() - startTime < timeout) {
+                try {
+                    const response = await fetch('/refresh-status', {
+                        cache: 'no-cache',
+                        headers: { 'Cache-Control': 'no-cache' }
+                    });
+                    const result = await response.json();
+
+                    if (result.message !== '无刷新记录') {
+                        return result;
+                    }
+                } catch (error) {
+                    console.error('轮询刷新状态出错:', error);
+                }
+
+                await new Promise(resolve => setTimeout(resolve, interval));
+            }
+
+            throw new Error('刷新超时，请稍后重试');
+        }
+
         async function refreshVideos() {
             if (isRefreshing) return;
             isRefreshing = true;
@@ -490,17 +531,24 @@
 
             try {
                 const response = await fetch('/refresh', {
-                    cache: 'no-cache'
+                    cache: 'no-cache',
+                    headers: { 'Cache-Control': 'no-cache' }
                 });
+                const result = await response.json();
 
                 if (response.ok || response.status === 202) {
-                    const result = await response.json();
-                    console.log('刷新结果:', result.message);
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    await fetchVideos();
+                    if (!result.success) {
+                        alert(result.message || '刷新失败，请重试');
+                        return;
+                    }
+
+                    const status = await pollRefreshStatus();
+                    if (status.success) {
+                        await fetchVideos();
+                    } else {
+                        alert(status.message || '刷新失败，请重试');
+                    }
                 } else {
-                    const result = await response.json();
-                    console.error('刷新失败:', result.message || response.status);
                     alert(result.message || '刷新失败，请重试');
                 }
             } catch (error) {
@@ -551,6 +599,60 @@
             return div.innerHTML;
         }
 
+        function createVideoItemElement(v, index) {
+            const item = document.createElement('div');
+            item.className = 'video-item';
+            item.dataset.index = index;
+            item.style.top = (index * ITEM_HEIGHT) + 'px';
+            item.innerHTML = `
+                <div class="video-icon">${getExtIcon(v.extension)}</div>
+                <div class="video-info">
+                    <div class="video-name">${escapeHtml(v.name)}</div>
+                    <div class="video-meta">
+                        <span>📅 ${escapeHtml(v.modified || '未知')}</span>
+                    </div>
+                </div>
+                <div class="video-ext">${escapeHtml(v.extension)}</div>
+                <div class="video-size">${formatSize(v.size)}</div>
+            `;
+            return item;
+        }
+
+        function updateVisibleItems(list) {
+            const filtered = list._videos;
+            if (!filtered || filtered.length === 0) return;
+
+            const scrollTop = list.scrollTop;
+            const viewportHeight = list.clientHeight;
+            const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_ITEMS);
+            const endIndex = Math.min(
+                filtered.length - 1,
+                Math.ceil((scrollTop + viewportHeight) / ITEM_HEIGHT) + BUFFER_ITEMS
+            );
+
+            let next = list.firstElementChild;
+            while (next) {
+                const current = next;
+                next = current.nextElementSibling;
+                if (current.classList.contains('video-item')) {
+                    current.remove();
+                }
+            }
+
+            for (let i = startIndex; i <= endIndex; i++) {
+                list.appendChild(createVideoItemElement(filtered[i], i));
+            }
+        }
+
+        function scheduleUpdateVisibleItems() {
+            if (pendingScrollUpdate) return;
+            pendingScrollUpdate = true;
+            requestAnimationFrame(() => {
+                pendingScrollUpdate = false;
+                updateVisibleItems(document.getElementById('videoList'));
+            });
+        }
+
         function renderVideos() {
             let filtered = videos.filter(v =>
                 v.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -575,27 +677,23 @@
             });
 
             const list = document.getElementById('videoList');
+            list.innerHTML = '';
+            list._videos = filtered;
+            list.scrollTop = 0;
 
             if (filtered.length === 0) {
                 list.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>没有找到视频</div></div>';
+                document.getElementById('totalCount').textContent = '0';
+                document.getElementById('totalSize').textContent = '0 B';
                 return;
             }
 
-            list.innerHTML = filtered.map((v, i) => `
-                <div class="video-item" data-index="${i}">
-                    <div class="video-icon">${getExtIcon(v.extension)}</div>
-                    <div class="video-info">
-                        <div class="video-name">${escapeHtml(v.name)}</div>
-                        <div class="video-meta">
-                            <span>📅 ${escapeHtml(v.modified || '未知')}</span>
-                        </div>
-                    </div>
-                    <div class="video-ext">${escapeHtml(v.extension)}</div>
-                    <div class="video-size">${formatSize(v.size)}</div>
-                </div>
-            `).join('');
+            const spacer = document.createElement('div');
+            spacer.className = 'video-scroll-spacer';
+            spacer.style.height = (filtered.length * ITEM_HEIGHT) + 'px';
+            list.appendChild(spacer);
 
-            list._videos = filtered;
+            updateVisibleItems(list);
 
             document.getElementById('totalCount').textContent = filtered.length;
             const totalBytes = filtered.reduce((sum, v) => sum + v.size, 0);
@@ -610,8 +708,11 @@
         }
 
         function filterVideos() {
-            searchTerm = document.getElementById('searchInput').value;
-            renderVideos();
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                searchTerm = document.getElementById('searchInput').value;
+                renderVideos();
+            }, 250);
         }
 
         document.addEventListener('keydown', function(e) {
@@ -628,6 +729,9 @@
                 openPlayer('/video/' + encodeURIComponent(v.relative_path), v.name);
             }
         });
+
+        document.getElementById('videoList').addEventListener('scroll', scheduleUpdateVisibleItems);
+        window.addEventListener('resize', scheduleUpdateVisibleItems);
 
         let pollTimer = null;
         function startPolling() {

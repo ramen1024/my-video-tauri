@@ -11,9 +11,9 @@
 //!
 //! 密码保护启用时，未认证请求会被重定向到登录页。
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::io::Read;
+
+use sha2::{Digest, Sha256};
 
 use crate::constants::REFRESH_COOLDOWN_SECS;
 use crate::models::VideoFile;
@@ -25,16 +25,32 @@ static LOGIN_PAGE: &str = include_str!("../login_template.html");
 
 /// 为视频列表计算 ETag
 ///
-/// 基于视频数量、总大小、第一个和最后一个视频的关键字段生成一个短标识。
+/// 基于视频数量、总大小、第一个和最后一个视频的关键字段生成一个稳定标识。
+/// 使用 SHA-256 替代默认哈希，保证跨进程、跨平台结果一致。
 fn compute_videos_etag(videos: &[VideoFile]) -> String {
     let count = videos.len();
     let total_size: u64 = videos.iter().map(|v| v.size).sum();
     let first = videos.first().map(|v| (v.relative_path.clone(), v.size));
     let last = videos.last().map(|v| (v.relative_path.clone(), v.size));
 
-    let mut hasher = DefaultHasher::new();
-    (count, total_size, first, last).hash(&mut hasher);
-    hasher.finish().to_string()
+    let mut hasher = Sha256::new();
+    hasher.update(&count.to_be_bytes());
+    hasher.update(&total_size.to_be_bytes());
+    if let Some((path, size)) = &first {
+        hasher.update(path.as_bytes());
+        hasher.update(&size.to_be_bytes());
+    } else {
+        hasher.update(&[0]);
+    }
+    if let Some((path, size)) = &last {
+        hasher.update(path.as_bytes());
+        hasher.update(&size.to_be_bytes());
+    } else {
+        hasher.update(&[0]);
+    }
+
+    let result = hasher.finalize();
+    result.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 /// HTTP 请求主处理函数
@@ -138,6 +154,9 @@ pub fn handle_request(
                 return super::response::json_response(400, &json);
             }
 
+            // 清空上次刷新结果，使 /refresh-status 能准确反映本次刷新状态
+            app_state.clear_refresh_result();
+
             let scan_app_state = app_state.clone();
             std::thread::spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -193,5 +212,49 @@ pub fn handle_request(
             super::video_serve::handle_video_request(&url, range_header, app_state)
         }
         _ => super::response::text_response(404, "Not found"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_videos_etag;
+    use crate::models::VideoFile;
+
+    fn sample_video(name: &str, relative_path: &str, size: u64) -> VideoFile {
+        VideoFile {
+            name: name.to_string(),
+            path: format!("/tmp/{}", name),
+            relative_path: relative_path.to_string(),
+            size,
+            modified: None,
+            extension: "mp4".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_compute_videos_etag_is_stable() {
+        let videos = vec![
+            sample_video("a.mp4", "a.mp4", 1024),
+            sample_video("b.mp4", "b.mp4", 2048),
+        ];
+        let etag1 = compute_videos_etag(&videos);
+        let etag2 = compute_videos_etag(&videos);
+        assert_eq!(etag1, etag2, "同一视频列表生成的 ETag 应保持一致");
+        assert_eq!(
+            etag1.len(),
+            64,
+            "SHA-256 十六进制输出长度应为 64"
+        );
+    }
+
+    #[test]
+    fn test_compute_videos_etag_differs_for_different_lists() {
+        let videos_a = vec![sample_video("a.mp4", "a.mp4", 1024)];
+        let videos_b = vec![sample_video("a.mp4", "a.mp4", 2048)];
+        assert_ne!(
+            compute_videos_etag(&videos_a),
+            compute_videos_etag(&videos_b),
+            "不同视频列表应生成不同 ETag"
+        );
     }
 }
