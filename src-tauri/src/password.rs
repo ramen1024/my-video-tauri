@@ -15,6 +15,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::constants::{
+    LOCK_DURATION_SECS, MAX_FAILED_ATTEMPTS, SESSION_CLEANUP_INTERVAL_SECS, SESSION_DURATION_SECS,
+};
 use argon2::{
     password_hash::{Error as PasswordHashError, SaltString},
     Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
@@ -39,16 +42,9 @@ static SESSIONS: LazyLock<Arc<RwLock<HashMap<String, i64>>>> =
 static FAILED_ATTEMPTS: LazyLock<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
-/// Session 有效时长（秒）
-pub const SESSION_DURATION_SECS: i64 = 3600;
-
 /// 应用特定的 pepper 值，用于在哈希前附加到密码。
 /// 该值不应存储在配置文件中；生产环境应替换为随机生成的密钥。
 const PEPPER: &str = "your-app-specific-pepper-change-in-production";
-/// 最大连续失败次数，超过后锁定 IP
-const MAX_FAILED_ATTEMPTS: u32 = 3;
-/// IP 锁定时长（秒）
-const LOCK_DURATION_SECS: i64 = 30;
 
 /// 密码保护状态，返回给前端显示
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -351,10 +347,10 @@ pub fn cleanup_expired_sessions() {
     sessions.retain(|_, expiry| *expiry > now);
 }
 
-/// 启动后台线程，定期清理过期 session（每 10 分钟）
+/// 启动后台线程，定期清理过期 session
 pub fn start_cleanup_thread() {
     std::thread::spawn(|| loop {
-        std::thread::sleep(std::time::Duration::from_secs(600));
+        std::thread::sleep(std::time::Duration::from_secs(SESSION_CLEANUP_INTERVAL_SECS));
         cleanup_expired_sessions();
     });
 }

@@ -1,53 +1,31 @@
 //! 视频扫描器 - Tauri 应用核心库
 //!
-//! 定义全局状态、模块结构，以及 Tauri Builder 配置。
+//! 定义模块结构、Tauri Managed State（AppState），以及 Tauri Builder 配置。
 //! 前端通过 Tauri IPC 调用 commands 模块中注册的命令，
 //! 后端通过 server 模块提供局域网 HTTP 共享服务。
 
-use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use parking_lot::{Mutex, RwLock};
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use tauri::Manager;
 
+mod commands;
+mod constants;
 mod error;
 mod models;
 mod password;
-mod utils;
-pub mod commands;
 mod server;
+mod utils;
 
 pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
 pub use password::PasswordStatus;
 
-/// 扫描取消标志：设为 true 时中止正在进行的视频扫描
-pub(crate) static CANCEL_SCAN_FLAG: LazyLock<AtomicBool> =
-    LazyLock::new(|| AtomicBool::new(false));
-
-/// 当前共享的视频列表，扫描完成后写入此全局状态
-pub(crate) static SHARED_VIDEOS: LazyLock<RwLock<Arc<Vec<VideoFile>>>> =
-    LazyLock::new(|| RwLock::new(Arc::new(Vec::new())));
-
-/// 当前共享的文件夹路径，HTTP 服务器据此定位视频文件
-pub(crate) static SHARED_FOLDER_PATH: LazyLock<RwLock<String>> =
-    LazyLock::new(|| RwLock::new(String::new()));
-
-/// HTTP 共享服务器的运行状态
-pub(crate) static SERVER_STATE: LazyLock<Mutex<ServerState>> =
-    LazyLock::new(|| Mutex::new(ServerState::Stopped));
-
-/// tiny_http 服务器实例，停止时需要调用 unblock 通知各 worker 退出
-pub(crate) static SERVER_HANDLE: LazyLock<RwLock<Option<Arc<tiny_http::Server>>>> =
-    LazyLock::new(|| RwLock::new(None));
-
-/// HTTP 服务器的 worker 线程句柄，停止时等待它们全部退出
-pub(crate) static SERVER_THREADS: LazyLock<RwLock<Vec<std::thread::JoinHandle<()>>>> =
-    LazyLock::new(|| RwLock::new(Vec::new()));
-
 /// HTTP 共享服务器的状态机
-pub(crate) enum ServerState {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ServerState {
     /// 服务器已停止或尚未启动
     Stopped,
     /// 服务器正在启动中（扫描视频 + 绑定端口）
@@ -58,11 +36,223 @@ pub(crate) enum ServerState {
     Stopping,
 }
 
+/// Tauri 托管的应用状态
+///
+/// 替代原有的全局 static 变量，所有运行期状态都通过 Tauri 的 State 机制注入到命令中。
+/// 内部字段均为 `Arc`，因此 `AppState` 可以在线程间 cheap clone。
+#[derive(Clone)]
+pub struct AppState {
+    /// 当前共享的视频列表
+    shared_videos: Arc<RwLock<Arc<Vec<VideoFile>>>>,
+    /// 当前共享的文件夹路径
+    shared_folder_path: Arc<RwLock<String>>,
+    /// HTTP 共享服务器的运行状态
+    server_state: Arc<Mutex<ServerState>>,
+    /// tiny_http 服务器实例
+    server_handle: Arc<RwLock<Option<Arc<tiny_http::Server>>>>,
+    /// HTTP 服务器的 worker 线程句柄
+    server_threads: Arc<RwLock<Vec<JoinHandle<()>>>>,
+    /// 扫描取消标志：设为 true 时中止正在进行的视频扫描
+    cancel_scan_flag: Arc<AtomicBool>,
+    /// 刷新操作是否正在进行中（防止并发刷新）
+    refresh_in_progress: Arc<AtomicBool>,
+    /// 刷新冷却标志（固定时间内不允许再次刷新）
+    refresh_cooldown: Arc<AtomicBool>,
+    /// 最近一次刷新操作的结果（JSON 字符串）
+    refresh_result: Arc<RwLock<Option<String>>>,
+}
+
+impl AppState {
+    /// 创建默认的应用状态
+    pub fn new() -> Self {
+        Self {
+            shared_videos: Arc::new(RwLock::new(Arc::new(Vec::new()))),
+            shared_folder_path: Arc::new(RwLock::new(String::new())),
+            server_state: Arc::new(Mutex::new(ServerState::Stopped)),
+            server_handle: Arc::new(RwLock::new(None)),
+            server_threads: Arc::new(RwLock::new(Vec::new())),
+            cancel_scan_flag: Arc::new(AtomicBool::new(false)),
+            refresh_in_progress: Arc::new(AtomicBool::new(false)),
+            refresh_cooldown: Arc::new(AtomicBool::new(false)),
+            refresh_result: Arc::new(RwLock::new(None)),
+        }
+    }
+
+    // ---------------- 视频与文件夹状态 ----------------
+
+    /// 获取当前共享的视频列表
+    pub fn shared_videos(&self) -> Arc<Vec<VideoFile>> {
+        self.shared_videos.read().clone()
+    }
+
+    /// 设置共享的视频列表
+    pub fn set_shared_videos(&self, videos: Vec<VideoFile>) {
+        *self.shared_videos.write() = Arc::new(videos);
+    }
+
+    /// 获取当前共享的文件夹路径
+    pub fn shared_folder_path(&self) -> String {
+        self.shared_folder_path.read().clone()
+    }
+
+    /// 设置当前共享的文件夹路径
+    pub fn set_shared_folder_path(&self, path: String) {
+        *self.shared_folder_path.write() = path;
+    }
+
+    // ---------------- 扫描取消标志 ----------------
+
+    /// 重置扫描取消标志
+    pub fn reset_cancel_scan_flag(&self) {
+        self.cancel_scan_flag.store(false, Ordering::Relaxed);
+    }
+
+    /// 设置扫描取消标志
+    pub fn set_cancel_scan_flag(&self) {
+        self.cancel_scan_flag.store(true, Ordering::Relaxed);
+    }
+
+    /// 检查扫描是否已被取消
+    pub fn is_scan_cancelled(&self) -> bool {
+        self.cancel_scan_flag.load(Ordering::Relaxed)
+    }
+
+    // ---------------- 服务器状态机 ----------------
+
+    /// 获取服务器当前状态
+    pub fn server_state(&self) -> ServerState {
+        *self.server_state.lock()
+    }
+
+    /// 检查服务器是否处于运行状态
+    pub fn is_server_running(&self) -> bool {
+        self.server_state() == ServerState::Running
+    }
+
+    /// 尝试进入 Starting 状态，失败时返回对应错误
+    pub fn start_server_starting(&self) -> Result<(), AppError> {
+        let mut state = self.server_state.lock();
+        match *state {
+            ServerState::Running | ServerState::Starting => Err(AppError::ServerAlreadyRunning),
+            ServerState::Stopping => {
+                Err(AppError::Other("服务器正在停止中，请稍后".to_string()))
+            }
+            ServerState::Stopped => {
+                *state = ServerState::Starting;
+                Ok(())
+            }
+        }
+    }
+
+    /// 将服务器设置为运行状态，并保存服务器实例和 worker 线程
+    pub fn set_server_running(
+        &self,
+        server: Arc<tiny_http::Server>,
+        threads: Vec<JoinHandle<()>>,
+    ) {
+        let mut handle = self.server_handle.write();
+        let mut worker_threads = self.server_threads.write();
+        let mut state = self.server_state.lock();
+        *handle = Some(server);
+        *worker_threads = threads;
+        *state = ServerState::Running;
+    }
+
+    /// 将服务器设置为 Stopping 状态，并返回当前 worker 数量
+    pub fn start_server_stopping(&self) -> Result<usize, AppError> {
+        let mut state = self.server_state.lock();
+        match *state {
+            ServerState::Stopped | ServerState::Stopping => Err(AppError::ServerNotRunning),
+            ServerState::Starting => {
+                Err(AppError::Other("服务器正在启动中，请稍后".to_string()))
+            }
+            ServerState::Running => {
+                *state = ServerState::Stopping;
+                let worker_count = self.server_threads.read().len();
+                Ok(worker_count)
+            }
+        }
+    }
+
+    /// 将服务器完全置为停止状态，并清空服务器句柄与线程记录
+    pub fn set_server_stopped(&self) {
+        let mut handle = self.server_handle.write();
+        let mut threads = self.server_threads.write();
+        let mut state = self.server_state.lock();
+        *handle = None;
+        *threads = Vec::new();
+        *state = ServerState::Stopped;
+    }
+
+    /// 取出当前服务器句柄（用于停止时 unblock）
+    pub fn take_server_handle(&self) -> Option<Arc<tiny_http::Server>> {
+        self.server_handle.write().take()
+    }
+
+    /// 取出当前所有 worker 线程句柄
+    pub fn take_server_threads(&self) -> Vec<JoinHandle<()>> {
+        std::mem::take(&mut *self.server_threads.write())
+    }
+
+    // ---------------- 刷新状态 ----------------
+
+    /// 获取最近一次刷新结果
+    pub fn refresh_result(&self) -> Option<String> {
+        self.refresh_result.read().clone()
+    }
+
+    /// 设置刷新结果
+    pub fn set_refresh_result(&self, result: String) {
+        *self.refresh_result.write() = Some(result);
+    }
+
+    /// 检查是否有刷新正在进行
+    pub fn is_refresh_in_progress(&self) -> bool {
+        self.refresh_in_progress.load(Ordering::Acquire)
+    }
+
+    /// 尝试标记刷新开始，返回是否成功
+    pub fn start_refresh(&self) -> bool {
+        self.refresh_in_progress
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    }
+
+    /// 标记刷新结束
+    pub fn finish_refresh(&self) {
+        self.refresh_in_progress.store(false, Ordering::Release);
+    }
+
+    /// 检查是否处于刷新冷却期
+    pub fn is_refresh_cooldown(&self) -> bool {
+        self.refresh_cooldown.load(Ordering::Acquire)
+    }
+
+    /// 尝试标记刷新冷却开始，返回是否成功
+    pub fn start_refresh_cooldown(&self) -> bool {
+        self.refresh_cooldown
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    }
+
+    /// 标记刷新冷却结束
+    pub fn finish_refresh_cooldown(&self) {
+        self.refresh_cooldown.store(false, Ordering::Release);
+    }
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Tauri 应用入口函数
 ///
 /// 配置并启动 Tauri 应用，包括：
 /// - 注册插件（opener、dialog、导航守卫）
 /// - 初始化密码配置和清理线程
+/// - 注册 Tauri Managed State（AppState）
 /// - 注册所有 IPC 命令处理器
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -92,6 +282,7 @@ pub fn run() {
             }
             password::load_password_config();
             password::start_cleanup_thread();
+            app.manage(AppState::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

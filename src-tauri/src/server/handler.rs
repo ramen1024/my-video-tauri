@@ -12,24 +12,13 @@
 //! 密码保护启用时，未认证请求会被重定向到登录页。
 
 use std::io::Read;
-use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::constants::REFRESH_COOLDOWN_SECS;
 use crate::password;
-use crate::SHARED_VIDEOS;
+use crate::AppState;
 
 /// 登录页面 HTML 模板（编译时嵌入）
 static LOGIN_PAGE: &str = include_str!("../login_template.html");
-/// 刷新操作是否正在进行中（防止并发刷新）
-static REFRESH_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-/// 刷新冷却标志（5 秒内不允许再次刷新）
-static REFRESH_COOLDOWN: AtomicBool = AtomicBool::new(false);
-
-use parking_lot::RwLock;
-use std::sync::LazyLock;
-
-/// 最近一次刷新操作的结果（JSON 字符串）
-static REFRESH_RESULT: LazyLock<RwLock<Option<String>>> =
-    LazyLock::new(|| RwLock::new(None));
 
 /// HTTP 请求主处理函数
 ///
@@ -39,6 +28,7 @@ pub fn handle_request(
     request: &mut tiny_http::Request,
     ips: &[String],
     port: u16,
+    app_state: &AppState,
 ) -> tiny_http::Response<Box<dyn Read + Send>> {
     let url = request.url().to_string();
     let method = request.method().clone();
@@ -76,62 +66,81 @@ pub fn handle_request(
             super::response::html_response(&html)
         }
         "/videos" => {
-            let videos = SHARED_VIDEOS.read().clone();
+            let videos = app_state.shared_videos();
             let json = serde_json::to_string(&*videos).unwrap_or_else(|_| "[]".to_string());
             let mut resp = super::response::json_response(200, &json);
             resp.add_header(
-                tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache, no-store, must-revalidate"[..]).unwrap(),
+                tiny_http::Header::from_bytes(
+                    &b"Cache-Control"[..],
+                    &b"no-cache, no-store, must-revalidate"[..],
+                )
+                .unwrap(),
             );
             resp
         }
         "/refresh" => {
-            if REFRESH_IN_PROGRESS.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
-                let json = serde_json::json!({"success": false, "message": "正在刷新中，请稍后"}).to_string();
+            if !app_state.start_refresh() {
+                let json = serde_json::json!({"success": false, "message": "正在刷新中，请稍后"})
+                    .to_string();
                 return super::response::json_response(429, &json);
             }
-            if REFRESH_COOLDOWN.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
-                REFRESH_IN_PROGRESS.store(false, Ordering::Release);
-                let json = serde_json::json!({"success": false, "message": "刷新过于频繁，请稍后再试"}).to_string();
+            if !app_state.start_refresh_cooldown() {
+                app_state.finish_refresh();
+                let json =
+                    serde_json::json!({"success": false, "message": "刷新过于频繁，请稍后再试"})
+                        .to_string();
                 return super::response::json_response(429, &json);
             }
 
-            let folder_path = crate::SHARED_FOLDER_PATH.read().clone();
+            let folder_path = app_state.shared_folder_path();
             if folder_path.is_empty() {
-                REFRESH_IN_PROGRESS.store(false, Ordering::Release);
-                REFRESH_COOLDOWN.store(false, Ordering::Release);
-                let json = serde_json::json!({"success": false, "message": "未设置共享文件夹"}).to_string();
+                app_state.finish_refresh();
+                app_state.finish_refresh_cooldown();
+                let json =
+                    serde_json::json!({"success": false, "message": "未设置共享文件夹"}).to_string();
                 return super::response::json_response(400, &json);
             }
 
+            let scan_app_state = app_state.clone();
             std::thread::spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    match crate::commands::video::scan_videos_sync(folder_path) {
-                        Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"}).to_string(),
-                        Err(e) => serde_json::json!({"success": false, "message": e.to_string()}).to_string(),
+                    match crate::commands::video::scan_videos_sync(folder_path, &scan_app_state) {
+                        Ok(_) => {
+                            serde_json::json!({"success": true, "message": "视频列表已刷新"})
+                                .to_string()
+                        }
+                        Err(e) => {
+                            serde_json::json!({"success": false, "message": e.to_string()})
+                                .to_string()
+                        }
                     }
                 }));
                 let msg = result.unwrap_or_else(|_| {
-                    serde_json::json!({"success": false, "message": "刷新过程中发生内部错误"}).to_string()
+                    serde_json::json!({"success": false, "message": "刷新过程中发生内部错误"})
+                        .to_string()
                 });
                 log::info!("[刷新] {}", msg);
-                let mut result_store = REFRESH_RESULT.write();
-                *result_store = Some(msg);
-                REFRESH_IN_PROGRESS.store(false, Ordering::Release);
+                scan_app_state.set_refresh_result(msg);
+                scan_app_state.finish_refresh();
             });
 
-            std::thread::spawn(|| {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                REFRESH_COOLDOWN.store(false, Ordering::Release);
+            let cooldown_app_state = app_state.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(REFRESH_COOLDOWN_SECS));
+                cooldown_app_state.finish_refresh_cooldown();
             });
 
             let json = serde_json::json!({"success": true, "message": "刷新已开始"}).to_string();
             super::response::json_response(202, &json)
         }
         "/refresh-status" => {
-            let result = REFRESH_RESULT.read().clone();
+            let result = app_state.refresh_result();
             match result {
                 Some(msg) => super::response::json_response(200, &msg),
-                None => super::response::json_response(200, r#"{"success": true, "message": "无刷新记录"}"#),
+                None => super::response::json_response(
+                    200,
+                    r#"{"success": true, "message": "无刷新记录"}"#,
+                ),
             }
         }
         _ if url.starts_with("/video/") => {
@@ -140,7 +149,7 @@ pub fn handle_request(
                 .iter()
                 .find(|h| h.field.as_str() == "Range")
                 .map(|h| h.value.as_str());
-            super::video_serve::handle_video_request(&url, range_header)
+            super::video_serve::handle_video_request(&url, range_header, app_state)
         }
         _ => super::response::text_response(404, "Not found"),
     }

@@ -8,12 +8,11 @@ use std::time::SystemTime;
 
 use parking_lot::RwLock;
 
+use crate::constants::IP_CACHE_TTL_SECS;
+
 /// IP 地址缓存，存储 (IP列表, 缓存时间)
 static CACHED_IPS: LazyLock<RwLock<Option<(Vec<String>, std::time::Instant)>>> =
     LazyLock::new(|| RwLock::new(None));
-
-/// IP 缓存有效期（5 分钟）
-const IP_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// 将系统时间格式化为可读字符串
 ///
@@ -71,7 +70,7 @@ pub fn get_local_ips() -> Vec<String> {
     {
         let cache = CACHED_IPS.read();
         if let Some((ref ips, cached_at)) = *cache {
-            if cached_at.elapsed() < IP_CACHE_TTL {
+            if cached_at.elapsed() < std::time::Duration::from_secs(IP_CACHE_TTL_SECS) {
                 return ips.clone();
             }
         }

@@ -9,14 +9,15 @@
 //! - `video_serve`: 视频文件服务（支持 Range 请求）
 //! - `response`: HTTP 响应构造工具
 
+mod auth;
 mod handler;
 mod response;
-mod auth;
 mod video_serve;
 
 use std::sync::Arc;
 
-use crate::{SERVER_STATE, ServerState};
+use crate::constants::SERVER_WORKER_DEFAULT_COUNT;
+use crate::{AppState, ServerState};
 
 /// 启动 HTTP 服务器
 ///
@@ -26,7 +27,11 @@ use crate::{SERVER_STATE, ServerState};
 /// # 返回
 /// - `Ok((server, handles))`: 服务器实例和 worker 线程句柄
 /// - `Err(msg)`: 绑定端口失败时的错误信息
-pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Server>, Vec<std::thread::JoinHandle<()>>), String> {
+pub fn start_http_server(
+    ips: &[String],
+    port: u16,
+    app_state: Arc<AppState>,
+) -> Result<(Arc<tiny_http::Server>, Vec<std::thread::JoinHandle<()>>), String> {
     let addr = format!("0.0.0.0:{}", port);
     let ips = ips.to_vec();
 
@@ -37,7 +42,7 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Se
 
     let worker_count = std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(4);
+        .unwrap_or(SERVER_WORKER_DEFAULT_COUNT);
 
     log::info!("[HTTP服务器] 启动: addr={}, workers={}", addr, worker_count);
 
@@ -46,25 +51,23 @@ pub fn start_http_server(ips: &[String], port: u16) -> Result<(Arc<tiny_http::Se
     for _ in 0..worker_count {
         let server = server.clone();
         let ips = ips.clone();
+        let app_state = app_state.clone();
         let handle = std::thread::spawn(move || {
             loop {
-                {
-                    let state = SERVER_STATE.lock();
-                    if !matches!(*state, ServerState::Running) {
-                        break;
-                    }
+                if !app_state.is_server_running() {
+                    break;
                 }
 
                 match server.incoming_requests().next() {
                     Some(mut request) => {
-                        let running = {
-                            let state = SERVER_STATE.lock();
-                            matches!(*state, ServerState::Running | ServerState::Stopping)
+                        let should_handle = {
+                            let state = app_state.server_state();
+                            matches!(state, ServerState::Running | ServerState::Stopping)
                         };
-                        if !running {
+                        if !should_handle {
                             break;
                         }
-                        let resp = handler::handle_request(&mut request, &ips, port);
+                        let resp = handler::handle_request(&mut request, &ips, port, &app_state);
                         request.respond(resp).ok();
                     }
                     None => break,

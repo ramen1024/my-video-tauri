@@ -11,6 +11,7 @@
   import { scanVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
   import { startShareServer, stopShareServer } from "$lib/services/share";
   import { getPasswordStatus } from "$lib/services/password";
+  import { DEFAULT_SHARE_PORT } from "$lib/config";
   import Header from "$lib/components/Header.svelte";
   import ErrorMessage from "$lib/components/ErrorMessage.svelte";
   import VideoPlayer from "$lib/components/VideoPlayer.svelte";
@@ -18,8 +19,6 @@
   import SharePanel from "$lib/components/SharePanel.svelte";
   import PasswordPanel from "$lib/components/PasswordPanel.svelte";
   import "$lib/styles/buttons.css";
-
-  const DEFAULT_SHARE_PORT = 6008;
 
   let videos = $state<VideoFile[]>([]);
   let currentFolder = $state("");

@@ -8,7 +8,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use crate::utils::sanitize_video_path;
-use crate::SHARED_FOLDER_PATH;
+use crate::AppState;
 
 /// 处理视频文件请求
 ///
@@ -17,13 +17,14 @@ use crate::SHARED_FOLDER_PATH;
 pub fn handle_video_request(
     url: &str,
     range_header: Option<&str>,
+    app_state: &AppState,
 ) -> tiny_http::Response<Box<dyn Read + Send>> {
     let video_name = url.strip_prefix("/video/").unwrap_or("");
     if video_name.is_empty() {
         return super::response::text_response(400, "Invalid video path");
     }
 
-    let folder_path = SHARED_FOLDER_PATH.read().clone();
+    let folder_path = app_state.shared_folder_path();
 
     let video_path = match sanitize_video_path(Path::new(&folder_path), video_name) {
         Some(path) => path,
@@ -95,7 +96,11 @@ pub fn handle_video_request(
     let mut headers = vec![
         tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),
         tiny_http::Header::from_bytes(&b"Accept-Ranges"[..], &b"bytes"[..]).unwrap(),
-        tiny_http::Header::from_bytes(&b"Content-Length"[..], content_length.to_string().as_bytes()).unwrap(),
+        tiny_http::Header::from_bytes(
+            &b"Content-Length"[..],
+            content_length.to_string().as_bytes(),
+        )
+        .unwrap(),
         tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-cache"[..]).unwrap(),
     ];
 
@@ -104,7 +109,8 @@ pub fn handle_video_request(
             tiny_http::Header::from_bytes(
                 &b"Content-Range"[..],
                 format!("bytes {}-{}/{}", range_start, range_end, file_size).as_bytes(),
-            ).unwrap(),
+            )
+            .unwrap(),
         );
     }
 

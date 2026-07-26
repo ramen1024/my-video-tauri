@@ -4,13 +4,11 @@
 
 use std::io::Read;
 
+use crate::constants::{MAX_AUTH_BODY_SIZE_BYTES, SESSION_DURATION_SECS};
 use crate::password;
 
-/// 请求体最大允许大小（字节），防止恶意大请求
-const MAX_BODY_SIZE: u64 = 1024;
-
-/// Session cookie 有效期（秒），与 `password::SESSION_DURATION_SECS` 保持一致。
-const SESSION_COOKIE_MAX_AGE_SECS: i64 = password::SESSION_DURATION_SECS;
+/// Session cookie 有效期（秒），与 `SESSION_DURATION_SECS` 保持一致。
+const SESSION_COOKIE_MAX_AGE_SECS: i64 = SESSION_DURATION_SECS;
 
 /// 是否给 session cookie 附加 `Secure` 属性。
 /// 当前应用通过 HTTP 在局域网共享，无法使用 HTTPS，因此设为 false。
@@ -26,7 +24,7 @@ pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<
 
     let content_length = request.body_length().unwrap_or(0) as u64;
 
-    if content_length > MAX_BODY_SIZE {
+    if content_length > MAX_AUTH_BODY_SIZE_BYTES {
         return super::response::json_response(
             413,
             r#"{"success": false, "message": "请求体过大"}"#,
