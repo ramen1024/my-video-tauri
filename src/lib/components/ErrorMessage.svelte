@@ -1,6 +1,6 @@
 <!--
   ErrorMessage 组件
-  显示错误提示消息，5 秒后自动消失，支持手动关闭
+  显示错误提示消息，5 秒后自动消失，支持手动关闭。
 -->
 <script lang="ts">
   import { onDestroy } from "svelte";
@@ -39,14 +39,33 @@
 
 <style>
   .error-message {
-    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
-    background: rgba(239,68,68,.1); color: #fca5a5;
-    border: 1px solid rgba(239,68,68,.2); border-radius: 12px;
-    margin-bottom: 12px; font-size: 13px; font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 500;
   }
+
   .dismiss-btn {
-    margin-left: auto; background: none; border: none; color: inherit;
-    cursor: pointer; font-size: 18px; padding: 0 4px; opacity: .7;
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    padding: 0 2px;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
   }
-  .dismiss-btn:hover { opacity: 1; }
+
+  .dismiss-btn:hover {
+    opacity: 1;
+  }
 </style>

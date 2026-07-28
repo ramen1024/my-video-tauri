@@ -1,33 +1,86 @@
 /**
  * 按钮样式
  *
- * 定义应用中所有按钮的基础样式和变体（primary/secondary/share/danger）。
- * 使用半透明背景 + 边框的玻璃态设计风格。
+ * 统一使用单一主色调（蓝色）+ 中性/危险色，减少视觉噪音。
+ * 默认按钮为 subtle 样式，强调操作使用主色填充。
  */
 
 /* 基础按钮样式 */
 .btn {
-  display: flex; align-items: center; gap: 6px; padding: 10px 18px;
-  border: 1px solid rgba(255,255,255,.15); font-size: 13px; font-weight: 500;
-  cursor: pointer; transition: all .2s ease; background: rgba(255,255,255,.08);
-  color: #fff; border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
 }
-.btn:hover:not(:disabled) { background: rgba(255,255,255,.14); transform: translateY(-1px); }
-.btn:active:not(:disabled) { transform: translateY(0); }
-.btn:disabled { opacity: .4; cursor: not-allowed; }
 
-/* 主要操作按钮（蓝色） */
-.btn-primary { background: rgba(59,130,246,.2); border-color: rgba(59,130,246,.4); color: #93c5fd; }
-.btn-primary:hover:not(:disabled) { background: rgba(59,130,246,.35); color: #bfdbfe; }
+.btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
 
-/* 次要操作按钮（紫色） */
-.btn-secondary { background: rgba(139,92,246,.2); border-color: rgba(139,92,246,.4); color: #c4b5fd; }
-.btn-secondary:hover:not(:disabled) { background: rgba(139,92,246,.35); color: #ddd6fe; }
+.btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
 
-/* 共享按钮（青色） */
-.btn-share { background: rgba(6,182,212,.2); border-color: rgba(6,182,212,.4); color: #67e8f9; }
-.btn-share:hover:not(:disabled) { background: rgba(6,182,212,.35); color: #a5f3fc; }
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
-/* 危险操作按钮（红色） */
-.btn-danger { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.4); color: #fca5a5; }
-.btn-danger:hover:not(:disabled) { background: rgba(239,68,68,.35); color: #fecaca; }
+/* 主要操作按钮 */
+.btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #3b82f6;
+}
+
+.btn-primary:active:not(:disabled) {
+  background: #1d4ed8;
+}
+
+/* 次要操作按钮 */
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 共享按钮 */
+.btn-share {
+  background: #059669;
+  color: #ffffff;
+}
+
+.btn-share:hover:not(:disabled) {
+  background: #10b981;
+}
+
+.btn-share:active:not(:disabled) {
+  background: #047857;
+}
+
+/* 危险操作按钮 */
+.btn-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+}

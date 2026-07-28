@@ -1,6 +1,7 @@
 <!--
   主页面
-  应用的唯一页面，编排所有子组件，管理全局状态（视频列表、共享状态、密码状态等）
+  应用的唯一页面，编排所有子组件，管理全局状态。
+  布局以工作区为核心，使用最小化的容器装饰。
 -->
 <script lang="ts">
   import { onMount } from "svelte";
@@ -132,20 +133,18 @@
 
   {#if currentFolder}
     <div class="folder-path">
-      <span class="path-label">当前文件夹:</span>
+      <span class="path-label">当前文件夹</span>
       <span class="path-value">{currentFolder}</span>
     </div>
   {/if}
 
   {#if isSharing && shareInfo}
     <SharePanel {shareInfo} onStop={stopShare} />
-    <div class="pwd-wrapper">
-      <PasswordPanel
-        {passwordStatus}
-        onStatusChange={(s) => { passwordStatus = s; }}
-        onError={(msg) => { errorMsg = msg; }}
-      />
-    </div>
+    <PasswordPanel
+      {passwordStatus}
+      onStatusChange={(s) => { passwordStatus = s; }}
+      onError={(msg) => { errorMsg = msg; }}
+    />
   {/if}
 
   <ErrorMessage message={errorMsg} onDismiss={() => { errorMsg = ""; }} />
@@ -159,7 +158,7 @@
       </div>
     {:else if videos.length === 0}
       <div class="empty-state">
-        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
         <p>请选择文件夹以扫描视频文件</p>
       </div>
     {:else}
@@ -170,45 +169,88 @@
 
 <style>
   .app {
-    display: flex; flex-direction: column; height: 100vh; padding: 16px;
-    position: relative; background: transparent;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 0 20px 20px;
+    background: #0f172a;
   }
 
   .folder-path {
-    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
-    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
-    border-radius: 12px; margin-bottom: 12px; font-size: 13px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 0 12px;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 12px;
   }
-  .path-label { color: rgba(255,255,255,.5); font-weight: 500; white-space: nowrap; }
-  .path-value { color: rgba(255,255,255,.8); word-break: break-all; }
 
-  .pwd-wrapper {
-    display: flex; flex-direction: column; gap: 8px; padding: 12px;
-    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
-    border-radius: 16px; margin-bottom: 12px;
+  .path-label {
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .path-value {
+    color: rgba(255, 255, 255, 0.7);
+    word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
   .content {
-    flex: 1; background: rgba(255,255,255,.03);
-    border: 1px solid rgba(255,255,255,.08); border-radius: 16px;
-    overflow: hidden; display: flex; flex-direction: column;
+    flex: 1;
+    background: #111827;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .loading {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; height: 100%; color: rgba(255,255,255,.7); gap: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: rgba(255, 255, 255, 0.6);
+    gap: 16px;
   }
-  .loading p { font-size: 13px; }
+
+  .loading p {
+    font-size: 13px;
+  }
+
   .spinner {
-    width: 40px; height: 40px; border: 2px solid rgba(255,255,255,.08);
-    border-top-color: #60a5fa; border-radius: 50%; animation: spin 1s linear infinite;
+    width: 36px;
+    height: 36px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
 
   .empty-state {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; height: 100%; color: rgba(255,255,255,.45); padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: rgba(255, 255, 255, 0.35);
+    padding: 32px;
+    gap: 12px;
   }
-  .empty-state svg { margin-bottom: 12px; opacity: .4; color: rgba(255,255,255,.5); }
-  .empty-state p { font-size: 13px; }
+
+  .empty-state svg {
+    opacity: 0.5;
+  }
+
+  .empty-state p {
+    font-size: 13px;
+  }
 </style>

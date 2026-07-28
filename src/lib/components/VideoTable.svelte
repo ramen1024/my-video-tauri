@@ -1,7 +1,7 @@
 <!--
   VideoTable 组件
-  视频文件列表表格，支持按名称/大小/日期排序和搜索过滤
-  使用虚拟滚动渲染大量视频项
+  视频文件列表，支持排序与搜索。
+  使用虚拟滚动渲染大量视频项，视觉以可读性为主。
 -->
 <script lang="ts">
   import { onDestroy } from "svelte";
@@ -62,12 +62,11 @@
     return list;
   });
 
-  const ROW_HEIGHT = 49;
+  const ROW_HEIGHT = 56;
 
   let scrollElement: HTMLDivElement | null = $state(null);
 
   let virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
-    // 初始值由 effect 通过 setOptions 同步更新
     // svelte-ignore state_referenced_locally
     count: displayVideos.length,
     getScrollElement: () => scrollElement,
@@ -81,60 +80,72 @@
       getItemKey: (index) => displayVideos[index]?.path ?? index,
     });
   });
+
+  function sortLabel(field: SortField): string {
+    return { name: "文件名", size: "大小", modified: "修改日期" }[field];
+  }
 </script>
 
 <div class="video-toolbar">
-  <div class="video-count">共找到 {videos.length} 个视频文件</div>
+  <div class="video-count">共 {videos.length} 个视频</div>
   <div class="search-box">
+    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
     <input type="text" placeholder="搜索视频..." value={searchTerm} oninput={handleSearchInput} aria-label="搜索视频" />
   </div>
 </div>
 
 {#if displayVideos.length === 0 && debouncedSearch}
-  <div class="no-results"><p>没有找到匹配 "{debouncedSearch}" 的视频</p></div>
+  <div class="no-results">
+    <p>没有找到匹配 "{debouncedSearch}" 的视频</p>
+  </div>
 {:else}
   <div class="table-header">
     <div class="header-row">
-      <div class="col-play"></div>
       <div class="col-name">
-        <button class="sort-btn" onclick={() => toggleSort("name")}>
-          文件名 {#if sortField === "name"}<span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>{/if}
+        <button class="sort-btn" class:active={sortField === "name"} onclick={() => toggleSort("name")}>
+          {sortLabel("name")}
+          {#if sortField === "name"}
+            <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={sortDirection === "asc" ? "M12 19V5M5 12l7-7 7 7" : "M12 5v14M5 12l7 7 7-7"}></path></svg>
+          {/if}
         </button>
       </div>
       <div class="col-size">
-        <button class="sort-btn" onclick={() => toggleSort("size")}>
-          大小 {#if sortField === "size"}<span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>{/if}
+        <button class="sort-btn" class:active={sortField === "size"} onclick={() => toggleSort("size")}>
+          {sortLabel("size")}
+          {#if sortField === "size"}
+            <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={sortDirection === "asc" ? "M12 19V5M5 12l7-7 7 7" : "M12 5v14M5 12l7 7 7-7"}></path></svg>
+          {/if}
         </button>
       </div>
       <div class="col-date">
-        <button class="sort-btn" onclick={() => toggleSort("modified")}>
-          日期 {#if sortField === "modified"}<span class="sort-icon">{sortDirection === "asc" ? "▲" : "▼"}</span>{/if}
+        <button class="sort-btn" class:active={sortField === "modified"} onclick={() => toggleSort("modified")}>
+          {sortLabel("modified")}
+          {#if sortField === "modified"}
+            <svg class="sort-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={sortDirection === "asc" ? "M12 19V5M5 12l7-7 7 7" : "M12 5v14M5 12l7 7 7-7"}></path></svg>
+          {/if}
         </button>
       </div>
-      <div class="col-type">播放</div>
+      <div class="col-action"></div>
     </div>
   </div>
   <div bind:this={scrollElement} class="table-body-container">
     <div class="table-body" style="height: {$virtualizer.getTotalSize()}px;">
       {#each $virtualizer.getVirtualItems() as row (row.key)}
         {@const video = displayVideos[row.index]}
-        <div class="table-row" style="height: {row.size}px; transform: translateY({row.start}px);">
-          <div class="col-play">
-            <button class="play-icon" onclick={() => onPlay(video)} aria-label="播放视频">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-            </button>
-          </div>
+        <div class="table-row" role="button" tabindex="0" style="height: {row.size}px; transform: translateY({row.start}px);" onclick={() => onPlay(video)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(video); } }}>
           <div class="col-name">
             <span class="video-name">{video.name}</span>
             <span class="video-ext">.{video.extension}</span>
           </div>
           <div class="col-size">{formatFileSize(video.size)}</div>
           <div class="col-date">{video.modified || "-"}</div>
-          <div class="col-type">
+          <div class="col-action">
             {#if isSupportedFormat(video.extension)}
-              <button class="play-btn" onclick={() => onPlay(video)}>播放</button>
+              <button class="play-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="播放">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              </button>
             {:else}
-              <button class="system-btn" onclick={() => onPlay(video)}>系统</button>
+              <button class="system-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="系统打开">打开</button>
             {/if}
           </div>
         </div>
@@ -145,88 +156,233 @@
 
 <style>
   .video-toolbar {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.06);
-    flex-shrink: 0; gap: 12px; background: rgba(255,255,255,.02);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+    gap: 12px;
+    background: #111827;
   }
-  .video-count { font-size: 13px; color: rgba(255,255,255,.7); font-weight: 500; }
-  .search-box { flex: 0 0 auto; max-width: 240px; position: relative; }
-  .search-box::before {
-    content: "🔍"; position: absolute; left: 10px; top: 50%;
-    transform: translateY(-50%); font-size: 12px; opacity: .4; pointer-events: none;
+
+  .video-count {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 500;
   }
+
+  .search-box {
+    flex: 0 0 auto;
+    width: 220px;
+    position: relative;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+  }
+
   .search-box input {
-    width: 100%; padding: 8px 12px 8px 32px;
-    border: 1px solid rgba(255,255,255,.1); border-radius: 8px;
-    font-size: 13px; background: rgba(255,255,255,.05); color: #fff;
-    transition: all .2s ease;
+    width: 100%;
+    padding: 7px 12px 7px 30px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    font-size: 13px;
+    background: rgba(255, 255, 255, 0.04);
+    color: #f8fafc;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
-  .search-box input:focus { outline: none; border-color: rgba(96,165,250,.4); background: rgba(255,255,255,.08); }
-  .search-box input::placeholder { color: rgba(255,255,255,.35); }
-  .no-results { padding: 32px 16px; text-align: center; color: rgba(255,255,255,.45); font-size: 13px; }
+
+  .search-box input:focus {
+    outline: none;
+    border-color: rgba(59, 130, 246, 0.5);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .search-box input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .no-results {
+    padding: 32px 16px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+  }
 
   .table-header {
-    background: rgba(255,255,255,.06);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(255,255,255,.06);
+    background: #0f172a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     flex-shrink: 0;
   }
+
   .header-row {
     display: grid;
-    grid-template-columns: 48px minmax(200px, 1fr) 90px 160px 72px;
+    grid-template-columns: minmax(200px, 1fr) 100px 150px 64px;
     align-items: center;
   }
-  .header-row > div {
-    padding: 10px 14px; text-align: left;
-    font-weight: 600; color: rgba(255,255,255,.75);
-    font-size: 11px; letter-spacing: .3px; text-transform: uppercase;
-  }
-  .sort-btn {
-    background: none; border: none; color: inherit; cursor: pointer;
-    font: inherit; padding: 0; display: inline-flex; align-items: center; gap: 4px;
-    transition: color .2s ease;
-  }
-  .sort-btn:hover { color: #60a5fa; }
-  .sort-icon { font-size: 9px; color: #60a5fa; }
 
-  .table-body-container { flex: 1; overflow: auto; position: relative; }
-  .table-body { position: relative; width: 100%; }
+  .header-row > div {
+    padding: 11px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+
+  .sort-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: color 0.15s ease;
+  }
+
+  .sort-btn:hover {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .sort-btn.active {
+    color: #60a5fa;
+  }
+
+  .sort-icon {
+    flex-shrink: 0;
+  }
+
+  .table-body-container {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+    background: #111827;
+  }
+
+  .table-body {
+    position: relative;
+    width: 100%;
+  }
+
   .table-row {
-    position: absolute; top: 0; left: 0; width: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
     display: grid;
-    grid-template-columns: 48px minmax(200px, 1fr) 90px 160px 72px;
+    grid-template-columns: minmax(200px, 1fr) 100px 150px 64px;
     align-items: center;
     box-sizing: border-box;
-    border-bottom: 1px solid rgba(255,255,255,.04);
-    cursor: pointer; transition: all .15s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+    transition: background-color 0.12s ease;
   }
-  .table-row:hover { background: rgba(255,255,255,.04); }
-  .table-row > div { padding: 8px 14px; }
-  .col-play { width: 48px; text-align: center; }
-  .col-name { min-width: 200px; }
-  .col-size { width: 90px; text-align: right; color: rgba(255,255,255,.6); }
-  .col-date { width: 160px; color: rgba(255,255,255,.45); }
-  .col-type { width: 72px; text-align: center; }
-  .play-icon {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px; background: rgba(96,165,250,.15);
-    border: 1px solid rgba(96,165,250,.3); color: #60a5fa;
-    border-radius: 50%; transition: all .2s ease; cursor: pointer;
-  }
-  .play-icon:hover { background: rgba(96,165,250,.3); transform: scale(1.08); }
-  .video-name { font-weight: 500; color: rgba(255,255,255,.9); }
-  .video-ext { margin-left: 5px; color: #60a5fa; font-size: 10px; font-weight: 500; text-transform: uppercase; }
-  .play-btn, .system-btn {
-    padding: 6px 12px; font-size: 11px; font-weight: 500; cursor: pointer;
-    border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
-    transition: all .2s ease; background: rgba(255,255,255,.06); color: rgba(255,255,255,.75);
-  }
-  .play-btn { background: rgba(96,165,250,.15); border-color: rgba(96,165,250,.3); color: #60a5fa; }
-  .play-btn:hover { background: rgba(96,165,250,.3); }
-  .system-btn:hover { background: rgba(255,255,255,.1); border-color: rgba(239,68,68,.3); color: #fca5a5; }
 
-  .table-body-container::-webkit-scrollbar { width: 6px; height: 6px; }
-  .table-body-container::-webkit-scrollbar-track { background: transparent; }
-  .table-body-container::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 3px; }
-  .table-body-container::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
+  .table-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .table-row > div {
+    padding: 10px 16px;
+  }
+
+  .col-name {
+    min-width: 200px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .col-size {
+    text-align: right;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .col-date {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .col-action {
+    text-align: right;
+  }
+
+  .video-name {
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .video-ext {
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .play-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: #2563eb;
+    border: none;
+    border-radius: 50%;
+    color: #ffffff;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .play-btn:hover {
+    background: #3b82f6;
+  }
+
+  .system-btn {
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.6);
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .system-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .table-body-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .table-body-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .table-body-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+  }
+
+  .table-body-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
 </style>
