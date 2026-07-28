@@ -104,7 +104,9 @@ pub async fn start_share_server(
 
 /// 停止局域网共享服务器
 ///
-/// 通过 unblock 通知各 worker 线程退出，并在后台等待它们结束
+/// 通过 unblock 通知各 worker 线程退出，并等待它们完全结束后再释放端口。
+/// 只有等所有 worker 线程退出、tiny_http Server 的 Arc 引用归零，
+/// 操作系统才会真正释放监听端口，避免再次启动时出现 "地址已在使用" 错误。
 #[tauri::command]
 pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppError> {
     let app_state = state.inner().clone();
@@ -122,12 +124,17 @@ pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppErro
     let handles = app_state.take_server_threads();
 
     if !handles.is_empty() {
-        std::thread::spawn(move || {
+        tauri::async_runtime::spawn_blocking(move || {
             for handle in handles {
                 let _ = handle.join();
             }
             log::info!("[共享] 所有worker线程已退出");
-        });
+        })
+        .await
+        .map_err(|e| {
+            log::error!("[共享] 等待worker线程退出失败: {}", e);
+            AppError::Other(format!("等待服务器线程退出失败: {}", e))
+        })?;
     }
 
     app_state.set_server_stopped();
