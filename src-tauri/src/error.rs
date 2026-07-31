@@ -13,9 +13,9 @@ use std::fmt;
 #[serde(tag = "type", content = "message")]
 pub enum AppError {
     InvalidPath(String),
-    ScanCancelled,
-    ServerAlreadyRunning,
-    ServerNotRunning,
+    ScanCancelled(String),
+    ServerAlreadyRunning(String),
+    ServerNotRunning(String),
     IoError(String),
     PasswordError(String),
     Other(String),
@@ -25,9 +25,9 @@ impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppError::InvalidPath(msg) => write!(f, "路径错误: {}", msg),
-            AppError::ScanCancelled => write!(f, "扫描已取消"),
-            AppError::ServerAlreadyRunning => write!(f, "服务器已在运行"),
-            AppError::ServerNotRunning => write!(f, "服务器未运行"),
+            AppError::ScanCancelled(_) => write!(f, "扫描已取消"),
+            AppError::ServerAlreadyRunning(_) => write!(f, "服务器已在运行"),
+            AppError::ServerNotRunning(_) => write!(f, "服务器未运行"),
             AppError::IoError(msg) => write!(f, "IO 错误: {}", msg),
             AppError::PasswordError(msg) => write!(f, "密码错误: {}", msg),
             AppError::Other(msg) => write!(f, "{}", msg),
@@ -62,5 +62,24 @@ impl From<std::io::Error> for AppError {
 impl From<serde_json::Error> for AppError {
     fn from(err: serde_json::Error) -> Self {
         AppError::Other(format!("JSON 序列化错误: {}", err))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_cancelled_serializes_with_message() {
+        let json = serde_json::to_string(&AppError::ScanCancelled("扫描已取消".to_string()))
+            .unwrap();
+        assert_eq!(json, r#"{"type":"ScanCancelled","message":"扫描已取消"}"#);
+    }
+
+    #[test]
+    fn test_server_not_running_serializes_with_message() {
+        let json = serde_json::to_string(&AppError::ServerNotRunning("服务器未运行".to_string()))
+            .unwrap();
+        assert_eq!(json, r#"{"type":"ServerNotRunning","message":"服务器未运行"}"#);
     }
 }

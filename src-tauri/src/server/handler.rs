@@ -63,6 +63,24 @@ pub fn handle_request(
     port: u16,
     app_state: &AppState,
 ) -> tiny_http::Response<Box<dyn Read + Send>> {
+    // Host 头校验，防止 DNS rebinding 攻击：
+    // 仅允许本机 IP（含回环地址）作为 Host，恶意网页无法通过域名解析指向本机后"同源"读取 /videos。
+    let host_allowed = request
+        .headers()
+        .iter()
+        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case("Host"))
+        .map(|h| h.value.as_str().split(':').next().unwrap_or(""))
+        .map(|host| {
+            ips.iter().any(|ip| ip == host)
+                || host == "127.0.0.1"
+                || host == "localhost"
+                || host == "::1"
+        })
+        .unwrap_or(false);
+    if !host_allowed {
+        return super::response::text_response(403, "Invalid Host header");
+    }
+
     let url = request.url().to_string();
     let method = request.method().clone();
 

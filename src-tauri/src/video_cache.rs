@@ -121,12 +121,6 @@ impl VideoCache {
         self.entries.insert(folder_path, entry);
         self.save()
     }
-
-    /// 删除指定文件夹的缓存条目并持久化
-    pub fn invalidate(&mut self, folder_path: &str) -> Result<(), String> {
-        self.entries.remove(folder_path);
-        self.save()
-    }
 }
 
 #[cfg(test)]

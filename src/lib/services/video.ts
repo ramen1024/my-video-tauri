@@ -1,7 +1,7 @@
 /**
  * 视频服务模块
  *
- * 封装视频相关的 Tauri IPC 调用，包括扫描、获取、播放和取消扫描。
+ * 封装视频相关的 Tauri IPC 调用，包括扫描、播放和取消扫描。
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -14,11 +14,6 @@ export async function scanVideos(
   useCache: boolean = true
 ): Promise<VideoFile[]> {
   return await invoke("scan_videos", { folderPath, useCache });
-}
-
-/** 获取当前共享的视频列表 */
-export async function getSharedVideos(): Promise<VideoFile[]> {
-  return await invoke("get_shared_videos");
 }
 
 /** 使用系统默认播放器打开视频文件 */

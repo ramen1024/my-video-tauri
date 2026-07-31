@@ -56,6 +56,8 @@ pub struct AppState {
     server_threads: Arc<RwLock<Vec<JoinHandle<()>>>>,
     /// 扫描取消标志：设为 true 时中止正在进行的视频扫描
     cancel_scan_flag: Arc<AtomicBool>,
+    /// 扫描操作是否正在进行中（防止桌面扫描与网页刷新并发执行）
+    scan_in_progress: Arc<AtomicBool>,
     /// 刷新操作是否正在进行中（防止并发刷新）
     refresh_in_progress: Arc<AtomicBool>,
     /// 刷新冷却标志（固定时间内不允许再次刷新）
@@ -76,6 +78,7 @@ impl AppState {
             server_handle: Arc::new(RwLock::new(None)),
             server_threads: Arc::new(RwLock::new(Vec::new())),
             cancel_scan_flag: Arc::new(AtomicBool::new(false)),
+            scan_in_progress: Arc::new(AtomicBool::new(false)),
             refresh_in_progress: Arc::new(AtomicBool::new(false)),
             refresh_cooldown: Arc::new(AtomicBool::new(false)),
             refresh_result: Arc::new(RwLock::new(None)),
@@ -136,6 +139,22 @@ impl AppState {
         self.cancel_scan_flag.load(Ordering::Relaxed)
     }
 
+    // ---------------- 扫描互斥 ----------------
+
+    /// 尝试标记扫描开始，返回是否成功
+    ///
+    /// 桌面扫描与网页刷新共用此标记，保证两者不会并发写入 shared_videos。
+    pub fn start_scan(&self) -> bool {
+        self.scan_in_progress
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    }
+
+    /// 标记扫描结束
+    pub fn finish_scan(&self) {
+        self.scan_in_progress.store(false, Ordering::Release);
+    }
+
     // ---------------- 服务器状态机 ----------------
 
     /// 获取服务器当前状态
@@ -152,7 +171,9 @@ impl AppState {
     pub fn start_server_starting(&self) -> Result<(), AppError> {
         let mut state = self.server_state.lock();
         match *state {
-            ServerState::Running | ServerState::Starting => Err(AppError::ServerAlreadyRunning),
+            ServerState::Running | ServerState::Starting => {
+                Err(AppError::ServerAlreadyRunning("服务器已在运行".to_string()))
+            }
             ServerState::Stopping => {
                 Err(AppError::Other("服务器正在停止中，请稍后".to_string()))
             }
@@ -181,7 +202,9 @@ impl AppState {
     pub fn start_server_stopping(&self) -> Result<usize, AppError> {
         let mut state = self.server_state.lock();
         match *state {
-            ServerState::Stopped | ServerState::Stopping => Err(AppError::ServerNotRunning),
+            ServerState::Stopped | ServerState::Stopping => {
+                Err(AppError::ServerNotRunning("服务器未运行".to_string()))
+            }
             ServerState::Starting => {
                 Err(AppError::Other("服务器正在启动中，请稍后".to_string()))
             }
@@ -324,7 +347,6 @@ pub fn run() {
             commands::password_cmd::get_password_status,
             commands::password_cmd::set_password_enabled,
             commands::password_cmd::set_password,
-            commands::password_cmd::verify_password_cmd,
             commands::password_cmd::generate_random_password,
             commands::password_cmd::reset_password,
         ])

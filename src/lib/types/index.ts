@@ -53,11 +53,21 @@ export interface AppError {
  *
  * Tauri 返回的错误可能是结构化的 AppError 或未知类型，此函数统一处理
  */
+/** 已知错误类型 → 中文文案兜底（后端正常情况下会携带 message，此表仅作防御） */
+const APP_ERROR_TYPE_MESSAGES: Record<string, string> = {
+  ScanCancelled: "扫描已取消",
+  ServerAlreadyRunning: "服务器已在运行",
+  ServerNotRunning: "服务器未运行",
+};
+
 export function parseAppError(e: unknown): string {
   if (typeof e === "object" && e !== null) {
     const err = e as Record<string, unknown>;
-    if (err.type && typeof err.type === "string" && err.message && typeof err.message === "string") {
-      return String(err.message);
+    if (typeof err.type === "string") {
+      if (typeof err.message === "string" && err.message.length > 0) {
+        return err.message;
+      }
+      return APP_ERROR_TYPE_MESSAGES[err.type] ?? err.type;
     }
   }
   return String(e);

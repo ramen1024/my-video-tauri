@@ -2,12 +2,6 @@
 //!
 //! 本模块集中存放后端各模块使用的硬编码常量，便于统一维护和前后端对齐。
 
-/// 默认局域网共享服务器端口
-///
-/// 注意：当前由前端传入实际端口，后端保留此常量用于与前端配置对齐。
-#[allow(dead_code)]
-pub const DEFAULT_SHARE_PORT: u16 = 6008;
-
 /// Session 有效时长（秒）
 pub const SESSION_DURATION_SECS: i64 = 3600;
 
@@ -39,6 +33,9 @@ pub const REFRESH_COOLDOWN_SECS: u64 = 5;
 
 /// 共享服务器启动超时时间（秒）
 pub const SERVER_START_TIMEOUT_SECS: u64 = 10;
+
+/// 共享服务器停止时等待单个 worker 线程退出的超时时间（秒）
+pub const SERVER_STOP_TIMEOUT_SECS: u64 = 5;
 
 /// 共享服务器 worker 线程数回退默认值
 pub const SERVER_WORKER_DEFAULT_COUNT: usize = 4;

@@ -37,15 +37,6 @@ pub fn set_password(password: String, _state: State<'_, AppState>) -> Result<(),
     password::set_password(&password).map_err(AppError::PasswordError)
 }
 
-/// 验证密码是否正确
-#[tauri::command]
-pub fn verify_password_cmd(
-    password: String,
-    _state: State<'_, AppState>,
-) -> Result<bool, AppError> {
-    password::verify_password(&password).map_err(AppError::PasswordError)
-}
-
 /// 生成 4 位随机数字密码
 #[tauri::command]
 pub fn generate_random_password(_state: State<'_, AppState>) -> String {

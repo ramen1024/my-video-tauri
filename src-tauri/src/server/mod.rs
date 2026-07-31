@@ -68,7 +68,16 @@ pub fn start_http_server(
                             break;
                         }
                         let resp = handler::handle_request(&mut request, &ips, port, &app_state);
-                        request.respond(resp).ok();
+                        let url = request.url().to_string();
+                        if url.starts_with("/video/") {
+                            // 视频流式响应可能长时间占用连接，放到独立线程写出，
+                            // 避免阻塞 worker 循环，影响 /videos、/refresh、/auth 等请求。
+                            std::thread::spawn(move || {
+                                let _ = request.respond(resp);
+                            });
+                        } else {
+                            request.respond(resp).ok();
+                        }
                     }
                     None => break,
                 }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use crate::constants::SERVER_START_TIMEOUT_SECS;
+use crate::constants::{SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS};
 use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::server;
@@ -126,7 +126,18 @@ pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppErro
     if !handles.is_empty() {
         tauri::async_runtime::spawn_blocking(move || {
             for handle in handles {
-                let _ = handle.join();
+                // 在独立线程中 join，主线程带超时等待，避免极端情况下停止按钮永久挂起
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let _ = handle.join();
+                    let _ = tx.send(());
+                });
+                if rx
+                    .recv_timeout(std::time::Duration::from_secs(SERVER_STOP_TIMEOUT_SECS))
+                    .is_err()
+                {
+                    log::warn!("[共享] worker线程退出超时，跳过等待");
+                }
             }
             log::info!("[共享] 所有worker线程已退出");
         })

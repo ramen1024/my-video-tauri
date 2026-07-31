@@ -47,7 +47,7 @@ static FAILED_ATTEMPTS: LazyLock<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
 const PEPPER: &str = "your-app-specific-pepper-change-in-production";
 
 /// 密码保护状态，返回给前端显示
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PasswordStatus {
     /// 密码保护是否已启用
     pub enabled: bool,
@@ -69,6 +69,8 @@ struct FailedAttempt {
     count: u32,
     /// 锁定截止时间戳（0 表示未锁定）
     locked_until: i64,
+    /// 最近一次失败的时间戳（用于清理过期记录）
+    last_failed_at: i64,
 }
 
 /// 获取当前 UTC 时间戳（秒）
@@ -277,6 +279,8 @@ pub fn set_password(password: &str) -> Result<(), String> {
         let mut stored_hash = PASSWORD_HASH.write();
         *stored_hash = Some(hash);
     }
+    // 密码已变更，清除所有已登录 session，使旧会话立即失效
+    SESSIONS.write().clear();
     save_password_config();
     Ok(())
 }
@@ -360,6 +364,7 @@ pub fn start_cleanup_thread() {
 /// 连续失败 MAX_FAILED_ATTEMPTS 次后，IP 将被锁定 LOCK_DURATION_SECS 秒
 pub fn check_rate_limit(ip: &str) -> Result<(), String> {
     let mut attempts = FAILED_ATTEMPTS.write();
+    prune_expired_attempts(&mut attempts);
     let now = current_timestamp();
 
     if let Some(attempt) = attempts.get(ip) {
@@ -375,17 +380,34 @@ pub fn check_rate_limit(ip: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 清理已过期的失败记录，防止 FAILED_ATTEMPTS 无限增长
+///
+/// 过期标准：锁定已结束（或从未锁定）且最近一次失败超出 LOCK_DURATION_SECS 窗口。
+/// 仍在锁定中、或仍在窗口内累计失败次数的记录保留。
+fn prune_expired_attempts(attempts: &mut HashMap<String, FailedAttempt>) {
+    let now = current_timestamp();
+    attempts.retain(|_, a| {
+        if a.locked_until > now {
+            return true;
+        }
+        now - a.last_failed_at < LOCK_DURATION_SECS
+    });
+}
+
 /// 记录一次登录失败，达到阈值后锁定该 IP
 pub fn record_failed_attempt(ip: &str) {
     let mut attempts = FAILED_ATTEMPTS.write();
+    prune_expired_attempts(&mut attempts);
     let now = current_timestamp();
 
     let attempt = attempts.entry(ip.to_string()).or_insert(FailedAttempt {
         count: 0,
         locked_until: 0,
+        last_failed_at: now,
     });
 
     attempt.count += 1;
+    attempt.last_failed_at = now;
 
     if attempt.count >= MAX_FAILED_ATTEMPTS {
         attempt.locked_until = now + LOCK_DURATION_SECS;

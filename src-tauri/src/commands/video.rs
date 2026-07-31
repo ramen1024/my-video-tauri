@@ -38,6 +38,26 @@ pub async fn scan_videos(
     .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))?
 }
 
+/// RAII 守卫：持有扫描互斥标记，作用域结束时自动释放
+///
+/// 保证桌面扫描与网页刷新互斥，所有返回路径（缓存命中、错误、取消、成功）都会释放标记。
+struct ScanGuard<'a>(&'a AppState);
+
+impl<'a> ScanGuard<'a> {
+    fn acquire(state: &'a AppState) -> Result<Self, AppError> {
+        if !state.start_scan() {
+            return Err(AppError::Other("扫描正在进行中，请稍后".to_string()));
+        }
+        Ok(Self(state))
+    }
+}
+
+impl Drop for ScanGuard<'_> {
+    fn drop(&mut self) {
+        self.0.finish_scan();
+    }
+}
+
 /// 同步执行视频扫描（在 spawn_blocking 中调用）
 ///
 /// 流程：验证路径 → 检查缓存 → 遍历文件 → 并行提取元数据 → 按名称排序 → 写入 AppState
@@ -52,6 +72,9 @@ pub(crate) fn scan_videos_sync(
     app_state: &AppState,
     use_cache: bool,
 ) -> Result<(), AppError> {
+    // 扫描互斥：桌面扫描与网页刷新不可并发执行，保证 shared_videos 写入互斥
+    let _guard = ScanGuard::acquire(app_state)?;
+
     let path = Path::new(&folder_path);
 
     if !path.exists() {
@@ -97,6 +120,7 @@ pub(crate) fn scan_videos_sync(
     let entries: Vec<_> = WalkDir::new(&folder_path)
         .follow_links(false)
         .into_iter()
+        .take_while(|_| !app_state.is_scan_cancelled())
         .filter_map(|e| e.ok())
         .filter(|e| {
             if !e.file_type().is_file() {
@@ -112,7 +136,7 @@ pub(crate) fn scan_videos_sync(
         .collect();
 
     if app_state.is_scan_cancelled() {
-        return Err(AppError::ScanCancelled);
+        return Err(AppError::ScanCancelled("扫描已取消".to_string()));
     }
 
     let mut videos: Vec<VideoFile> = entries
@@ -157,10 +181,10 @@ pub(crate) fn scan_videos_sync(
         .collect();
 
     if app_state.is_scan_cancelled() {
-        return Err(AppError::ScanCancelled);
+        return Err(AppError::ScanCancelled("扫描已取消".to_string()));
     }
 
-    videos.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    videos.sort_by_cached_key(|v| v.name.to_lowercase());
 
     let cached_at = chrono::Utc::now().timestamp();
     let cache_entry = VideoCacheEntry {

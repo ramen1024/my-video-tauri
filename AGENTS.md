@@ -34,7 +34,7 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 
 ## Backend (`src-tauri/src/`)
 
-- `lib.rs` — Tauri Builder setup + global statics (SHARED_VIDEOS, SERVER_RUNNING, etc.)
+- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、scan/refresh/cancel 标志、视频缓存）
 - `commands/` — `#[tauri::command]` handlers: video.rs, share.rs, password_cmd.rs
 - `server/` — embedded HTTP server: handler.rs (routing), auth.rs, video_serve.rs (Range requests), response.rs
 - `password.rs` — password storage, sessions, rate limiting
@@ -49,7 +49,10 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 
 ## Quirks
 
-- `Cargo.toml` uses Chinese package/bin name `视频扫描器` — may cause encoding issues in some CI
+- Cargo.toml package name is `video-scanner`；中文名 `视频扫描器` 在 `tauri.conf.json`（productName、mainBinaryName）
+- 视频流式响应在独立线程中写出，不占用 HTTP worker；停止服务器时 worker `join` 带 5s 超时
+- 所有扫描入口统一经 `scan_videos_sync` 内的 `ScanGuard` 互斥（桌面扫描与网页 `/refresh` 共用，并发时返回"扫描正在进行中"）
+- HTTP 服务器校验 `Host` 头（仅允许本机 IP / localhost），新增端点无需额外处理
 - Cargo uses USTC mirror (`src-tauri/.cargo/config.toml`)
 - Vite dev server fixed on port 1420; HMR on 1421
 - `qrcode-generator` is dynamically imported — don't add it as a top-level import
