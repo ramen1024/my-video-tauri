@@ -181,6 +181,30 @@
             to { transform: rotate(360deg); }
         }
 
+        /* Toast 提示 */
+        .toast {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+            padding: 9px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 2000;
+            max-width: 90vw;
+        }
+
+        .toast.visible {
+            opacity: 1;
+        }
+
         /* Video list */
         .video-list {
             background: var(--surface);
@@ -472,6 +496,7 @@
     </style>
 </head>
 <body>
+    <div class="toast" id="toast"></div>
     <div class="container">
         <header class="page-header">
             <div class="brand">
@@ -531,6 +556,15 @@
         let isRefreshing = false;
         let searchDebounceTimer = null;
         let pendingScrollUpdate = false;
+        let toastTimer = null;
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('visible');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.remove('visible'), 4000);
+        }
 
         async function fetchVideos() {
             try {
@@ -556,7 +590,8 @@
 
         async function pollRefreshStatus() {
             const startTime = Date.now();
-            const timeout = 30000;
+            // 大文件夹全量扫描可能耗时较长，超时放宽到 2 分钟
+            const timeout = 120000;
             const interval = 800;
 
             while (Date.now() - startTime < timeout) {
@@ -597,7 +632,7 @@
 
                 if (response.ok || response.status === 202) {
                     if (!result.success) {
-                        alert(result.message || '刷新失败，请重试');
+                        showToast(result.message || '刷新失败，请重试');
                         return;
                     }
 
@@ -605,14 +640,14 @@
                     if (status.success) {
                         await fetchVideos();
                     } else {
-                        alert(status.message || '刷新失败，请重试');
+                        showToast(status.message || '刷新失败，请重试');
                     }
                 } else {
-                    alert(result.message || '刷新失败，请重试');
+                    showToast(result.message || '刷新失败，请重试');
                 }
             } catch (error) {
                 console.error('刷新出错:', error);
-                alert('刷新出错: ' + error.message);
+                showToast('刷新出错: ' + error.message);
             } finally {
                 isRefreshing = false;
                 refreshBtn.classList.remove('spinning');

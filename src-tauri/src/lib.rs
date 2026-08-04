@@ -15,6 +15,7 @@ use tauri::Manager;
 mod commands;
 mod constants;
 mod error;
+mod logging;
 mod models;
 mod password;
 mod server;
@@ -24,6 +25,11 @@ mod video_cache;
 pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
 pub use password::PasswordStatus;
+
+/// 初始化日志系统（main 入口调用）
+pub fn init_logging() {
+    logging::init();
+}
 
 /// HTTP 共享服务器的状态机
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -350,7 +356,8 @@ pub fn run() {
 
             if let Ok(data_dir) = app.path().app_data_dir() {
                 password::set_config_dir(data_dir.clone());
-                app_state.set_video_cache_dir(data_dir);
+                app_state.set_video_cache_dir(data_dir.clone());
+                logging::set_log_file(data_dir);
             }
 
             password::load_password_config();

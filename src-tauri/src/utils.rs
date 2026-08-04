@@ -120,6 +120,18 @@ fn detect_local_ips() -> Vec<String> {
     }
 }
 
+/// 将共享文件夹加入 asset 协议访问范围（Tauri 2 运行时 API）
+///
+/// 配置文件中的 `assetProtocol.scope` 保持最小化（空），用户选择文件夹后在此
+/// 动态放行，避免 `**` 全盘范围带来的任意文件读取风险。失败仅记日志，
+/// 桌面端仍可回退使用系统播放器打开视频。
+pub fn allow_shared_folder_asset_scope(app: &tauri::AppHandle, folder_path: &str) {
+    use tauri::Manager;
+    if let Err(e) = app.asset_protocol_scope().allow_directory(folder_path, true) {
+        log::warn!("[共享] 设置 asset 协议访问范围失败: {}", e);
+    }
+}
+
 /// URL 解码函数，使用标准 percent-encoding 库
 pub fn urlencoding_decode(input: &str) -> String {
     percent_encoding::percent_decode_str(input)

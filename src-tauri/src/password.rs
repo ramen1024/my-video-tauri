@@ -43,8 +43,15 @@ static FAILED_ATTEMPTS: LazyLock<Arc<RwLock<HashMap<String, FailedAttempt>>>> =
     LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 /// 应用特定的 pepper 值，用于在哈希前附加到密码。
-/// 该值不应存储在配置文件中；生产环境应替换为随机生成的密钥。
-const PEPPER: &str = "your-app-specific-pepper-change-in-production";
+///
+/// 新版在首次启动时生成随机 pepper 并持久化到配置文件（见 `PasswordConfig::pepper`），
+/// 不再使用硬编码常量——硬编码 pepper 编译进二进制后对所有安装都一样，
+/// 攻击者反编译即可获得，实际不提供额外防护。
+const LEGACY_PEPPER: &str = "your-app-specific-pepper-change-in-production";
+
+/// 当前生效的随机 pepper（首次加载配置时生成并持久化）
+static PEPPER_KEY: LazyLock<Arc<RwLock<Option<String>>>> =
+    LazyLock::new(|| Arc::new(RwLock::new(None)));
 
 /// 密码保护状态，返回给前端显示
 #[derive(Debug, Clone, Serialize)]
@@ -60,6 +67,18 @@ pub struct PasswordStatus {
 struct PasswordConfig {
     password_hash: Option<String>,
     enabled: bool,
+    /// 随机 pepper（旧版本配置中不存在，缺省时回退到 LEGACY_PEPPER 验证）
+    pepper: Option<String>,
+}
+
+impl Default for PasswordConfig {
+    fn default() -> Self {
+        Self {
+            password_hash: None,
+            enabled: false,
+            pepper: None,
+        }
+    }
 }
 
 /// 单个 IP 的登录失败记录
@@ -103,29 +122,50 @@ pub fn set_config_dir(path: std::path::PathBuf) {
 }
 
 /// 从配置文件加载密码设置，应用启动时调用
+///
+/// 首次加载（或旧版本配置无 pepper 字段）时生成随机 pepper 并持久化。
 pub fn load_password_config() {
     match config_path() {
         Ok(path) => {
-            if !path.exists() {
-                log::info!("[密码配置] 配置文件不存在，使用默认设置: {:?}", path);
-                return;
-            }
-
-            match std::fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<PasswordConfig>(&content) {
-                    Ok(config) => {
-                        if let Some(hash) = config.password_hash {
-                            let mut stored_hash = PASSWORD_HASH.write();
-                            *stored_hash = Some(hash);
+            let mut config = if path.exists() {
+                match std::fs::read_to_string(&path) {
+                    Ok(content) => match serde_json::from_str::<PasswordConfig>(&content) {
+                        Ok(config) => config,
+                        Err(e) => {
+                            log::error!(
+                                "[密码配置] JSON 解析失败（文件可能损坏）: {} 路径: {:?}",
+                                e, path
+                            );
+                            PasswordConfig::default()
                         }
-                        PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
+                    },
+                    Err(e) => {
+                        log::error!("[密码配置] 读取配置文件失败: {} 路径: {:?}", e, path);
+                        PasswordConfig::default()
                     }
-                    Err(e) => log::error!(
-                        "[密码配置] JSON 解析失败（文件可能损坏）: {} 路径: {:?}",
-                        e, path
-                    ),
-                },
-                Err(e) => log::error!("[密码配置] 读取配置文件失败: {} 路径: {:?}", e, path),
+                }
+            } else {
+                log::info!("[密码配置] 配置文件不存在，使用默认设置: {:?}", path);
+                PasswordConfig::default()
+            };
+
+            // 生成或恢复随机 pepper（旧版配置无 pepper 字段时生成并持久化）
+            let pepper_missing = config.pepper.as_deref().map_or(true, |p| p.is_empty());
+            if pepper_missing {
+                config.pepper = Some(generate_pepper());
+                log::info!("[密码配置] 已生成新的随机 pepper");
+            }
+            *PEPPER_KEY.write() = config.pepper.clone();
+
+            if let Some(hash) = config.password_hash {
+                let mut stored_hash = PASSWORD_HASH.write();
+                *stored_hash = Some(hash);
+            }
+            PASSWORD_ENABLED.store(config.enabled, Ordering::SeqCst);
+
+            // 旧配置迁移出新 pepper 后立即持久化，保证下次启动沿用同一个 pepper
+            if pepper_missing {
+                save_password_config();
             }
         }
         Err(e) => log::error!("[密码配置] 获取配置路径失败: {}", e),
@@ -137,6 +177,7 @@ fn save_password_config() {
     let config = PasswordConfig {
         password_hash: PASSWORD_HASH.read().clone(),
         enabled: PASSWORD_ENABLED.load(Ordering::SeqCst),
+        pepper: PEPPER_KEY.read().clone(),
     };
     match serde_json::to_string_pretty(&config) {
         Ok(json) => match config_path() {
@@ -231,8 +272,26 @@ fn is_legacy_sha256_hash(hash: &str) -> bool {
     hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// 获取当前使用的 pepper
+///
+/// 未加载配置时回退到旧版固定 pepper（测试与兼容场景），
+/// 生产环境在 load_password_config 时已生成随机 pepper。
+fn current_pepper() -> String {
+    PEPPER_KEY
+        .read()
+        .clone()
+        .unwrap_or_else(|| LEGACY_PEPPER.to_string())
+}
+
+/// 生成 64 字符随机十六进制 pepper
+fn generate_pepper() -> String {
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
 /// 使用 Argon2id 对密码进行哈希，返回 PHC 字符串格式。
-/// 密码在哈希前会附加 pepper，salt 随机生成。
+/// 密码在哈希前会附加当前 pepper，salt 随机生成。
 pub fn hash_password_argon2id(password: &str) -> Result<String, String> {
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default());
 
@@ -241,22 +300,24 @@ pub fn hash_password_argon2id(password: &str) -> Result<String, String> {
     let salt = SaltString::encode_b64(&salt_bytes)
         .map_err(|e| format!("编码 salt 失败: {}", e))?;
 
-    let password_with_pepper = format!("{}{}", password, PEPPER);
+    let password_with_pepper = format!("{}{}", password, current_pepper());
     argon2
         .hash_password(password_with_pepper.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|e| format!("Argon2id 哈希失败: {}", e))
 }
 
-/// 使用 Argon2id 验证密码。
-/// `hash_with_salt` 应为 PHC 字符串格式（由 `hash_password_argon2id` 生成）。
-/// Argon2 crate 内部已使用恒定时间比较。
-pub fn verify_password_argon2id(password: &str, hash_with_salt: &str) -> Result<bool, String> {
+/// 使用指定 pepper 验证密码（恒定时间比较由 Argon2 crate 内部保证）
+fn verify_password_with_pepper(
+    password: &str,
+    hash_with_salt: &str,
+    pepper: &str,
+) -> Result<bool, String> {
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default());
     let parsed_hash = PasswordHash::new(hash_with_salt)
         .map_err(|e| format!("解析密码哈希失败: {}", e))?;
 
-    let password_with_pepper = format!("{}{}", password, PEPPER);
+    let password_with_pepper = format!("{}{}", password, pepper);
     match argon2.verify_password(password_with_pepper.as_bytes(), &parsed_hash) {
         Ok(_) => Ok(true),
         Err(PasswordHashError::Password) => Ok(false),
@@ -288,16 +349,33 @@ pub fn set_password(password: &str) -> Result<(), String> {
 /// 验证密码是否正确（与存储的哈希值比对）
 pub fn verify_password(password: &str) -> Result<bool, String> {
     let hash_guard = PASSWORD_HASH.read();
-    match hash_guard.as_ref() {
-        Some(hash) => {
-            if is_legacy_sha256_hash(hash) {
-                log::warn!("[密码配置] 检测到旧版 SHA-256 哈希，视为未验证通过，请重新设置密码");
-                return Ok(false);
-            }
-            verify_password_argon2id(password, hash)
-        }
-        None => Err("未设置密码".to_string()),
+    let Some(hash) = hash_guard.as_ref() else {
+        return Err("未设置密码".to_string());
+    };
+
+    if is_legacy_sha256_hash(hash) {
+        log::warn!("[密码配置] 检测到旧版 SHA-256 哈希，视为未验证通过，请重新设置密码");
+        return Ok(false);
     }
+
+    let pepper = current_pepper();
+    if verify_password_with_pepper(password, hash, &pepper)? {
+        return Ok(true);
+    }
+
+    // 旧版本使用固定 pepper 生成的哈希：用 legacy pepper 再验证一次，
+    // 成功后自动使用当前随机 pepper 重哈希并迁移配置，用户无感知
+    if pepper != LEGACY_PEPPER && verify_password_with_pepper(password, hash, LEGACY_PEPPER)? {
+        log::info!("[密码配置] 旧版 pepper 哈希验证通过，正在迁移到新 pepper");
+        drop(hash_guard);
+        if let Ok(new_hash) = hash_password_argon2id(password) {
+            *PASSWORD_HASH.write() = Some(new_hash);
+            save_password_config();
+        }
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 /// 重置密码：清除哈希、所有 session，并禁用密码保护
@@ -465,8 +543,12 @@ fn extract_session_token(cookie_header: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// 涉及全局 pepper/哈希状态的测试串行执行，避免并行交叉污染
+    static PASSWORD_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_hash_password_argon2id() {
+        let _guard = PASSWORD_TEST_LOCK.lock().unwrap();
         let hash = hash_password_argon2id("1234").expect("哈希应成功");
         assert!(
             hash.starts_with("$argon2id$"),
@@ -476,16 +558,20 @@ mod tests {
 
     #[test]
     fn test_verify_password_argon2id_correct() {
+        let _guard = PASSWORD_TEST_LOCK.lock().unwrap();
         let password = "5678";
         let hash = hash_password_argon2id(password).expect("哈希应成功");
-        let result = verify_password_argon2id(password, &hash).expect("验证不应报错");
+        let result = verify_password_with_pepper(password, &hash, &current_pepper())
+            .expect("验证不应报错");
         assert!(result, "正确密码应验证通过");
     }
 
     #[test]
     fn test_verify_password_argon2id_wrong() {
+        let _guard = PASSWORD_TEST_LOCK.lock().unwrap();
         let hash = hash_password_argon2id("0000").expect("哈希应成功");
-        let result = verify_password_argon2id("9999", &hash).expect("验证不应报错");
+        let result = verify_password_with_pepper("9999", &hash, &current_pepper())
+            .expect("验证不应报错");
         assert!(!result, "错误密码应验证失败");
     }
 
@@ -506,6 +592,7 @@ mod tests {
 
     #[test]
     fn test_set_password_validation() {
+        let _guard = PASSWORD_TEST_LOCK.lock().unwrap();
         assert!(
             set_password("123").is_err(),
             "少于 4 位的密码应校验失败"
@@ -522,5 +609,49 @@ mod tests {
             set_password("12a4").is_err(),
             "包含非数字字符的密码应校验失败"
         );
+    }
+
+    #[test]
+    fn test_verify_password_migrates_legacy_pepper() {
+        let _guard = PASSWORD_TEST_LOCK.lock().unwrap();
+        // 模拟旧版配置：使用固定 LEGACY_PEPPER 生成哈希
+        let legacy_hash = {
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default());
+            let mut salt_bytes = [0u8; 16];
+            rand::rng().fill_bytes(&mut salt_bytes);
+            let salt = SaltString::encode_b64(&salt_bytes).expect("编码 salt 应成功");
+            let password_with_pepper = format!("{}{}", "1234", LEGACY_PEPPER);
+            argon2
+                .hash_password(password_with_pepper.as_bytes(), &salt)
+                .expect("哈希应成功")
+                .to_string()
+        };
+
+        // 模拟生产环境：当前 pepper 已切换为随机值
+        *PEPPER_KEY.write() = Some("a".repeat(64));
+        *PASSWORD_HASH.write() = Some(legacy_hash);
+
+        // 旧版 pepper 的密码应验证通过，并自动迁移到新 pepper
+        assert!(
+            verify_password("1234").expect("验证不应报错"),
+            "旧版 pepper 的密码应验证通过"
+        );
+        let migrated = PASSWORD_HASH.read().clone().expect("迁移后应存在哈希");
+        assert!(
+            verify_password_with_pepper("1234", &migrated, &current_pepper())
+                .expect("验证不应报错"),
+            "迁移后哈希应使用当前 pepper"
+        );
+
+        // 错误密码不应触发迁移
+        *PASSWORD_HASH.write() = Some(migrated);
+        assert!(
+            !verify_password("9999").expect("验证不应报错"),
+            "错误密码应验证失败"
+        );
+
+        // 清理全局状态，避免影响其他测试
+        *PASSWORD_HASH.write() = None;
+        *PEPPER_KEY.write() = None;
     }
 }

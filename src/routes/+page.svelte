@@ -48,7 +48,7 @@
     if (!currentFolder) return;
     isScanning = true;
     errorMsg = "";
-    videos = [];
+    // 保留旧列表，扫描完成后直接覆盖，避免界面闪空
     try {
       videos = await scanVideos(currentFolder, useCache);
     } catch (e) {

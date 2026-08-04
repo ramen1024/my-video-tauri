@@ -45,3 +45,6 @@ pub const SERVER_WORKER_DEFAULT_COUNT: usize = 4;
 /// worker 只处理小请求（视频流在独立线程写出），核心数再多也无收益，
 /// 限制上限避免高配机器创建大量空闲线程。
 pub const SERVER_WORKER_MAX_COUNT: usize = 16;
+
+/// 端口被占用时自动尝试的端口数量（从指定端口开始向后尝试）
+pub const MAX_PORT_ATTEMPTS: u16 = 5;

@@ -5,25 +5,29 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use tauri::State;
 
-use crate::constants::{SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS};
+use crate::constants::{
+    MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS,
+};
 use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::server;
-use crate::utils::get_local_ips;
+use crate::utils::{allow_shared_folder_asset_scope, get_local_ips};
 use crate::AppState;
 
 /// 启动局域网共享服务器
 ///
-/// 流程：状态检查 → 扫描视频 → 启动 HTTP 服务器 → 等待就绪
+/// 流程：状态检查 → 扫描视频 → 启动 HTTP 服务器（端口被占用时自动尝试下一个）→ 等待就绪
 /// 服务器在独立线程中运行，通过 channel 通知启动结果
 #[tauri::command]
 pub async fn start_share_server(
     folder_path: String,
     port: u16,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<ShareServerInfo, AppError> {
     let app_state = state.inner().clone();
 
@@ -61,43 +65,74 @@ pub async fn start_share_server(
     log::info!("[共享] 视频扫描完成，正在启动HTTP服务器...");
 
     let ips = get_local_ips();
-    let ips_clone = ips.clone();
-    let (tx, rx) = std::sync::mpsc::channel();
 
-    let server_app_state = Arc::new(app_state.clone());
-    std::thread::spawn(move || {
-        let result = server::start_http_server(&ips_clone, port, server_app_state);
-        let _ = tx.send(result);
-    });
+    // 端口被占用时自动尝试下一个端口，最多 MAX_PORT_ATTEMPTS 个
+    let mut last_error = "服务器启动失败".to_string();
+    let mut server_handle: Option<Arc<tiny_http::Server>> = None;
+    let mut worker_handles: Vec<JoinHandle<()>> = Vec::new();
+    let mut started_port = port;
 
-    let server_result = match tauri::async_runtime::spawn_blocking(move || {
-        rx.recv_timeout(std::time::Duration::from_secs(SERVER_START_TIMEOUT_SECS))
-    })
-    .await
-    {
-        Ok(res) => res,
-        Err(e) => {
-            app_state.set_server_stopped();
-            log::error!("[共享] 等待服务器启动失败: {}", e);
-            return Err(AppError::Other(format!("等待服务器启动失败: {}", e)));
-        }
-    };
+    for attempt in 0..MAX_PORT_ATTEMPTS {
+        let candidate = port + attempt;
+        let (tx, rx) = std::sync::mpsc::channel();
 
-    match server_result {
-        Ok(Ok((server_arc, handles))) => {
-            app_state.set_server_running(server_arc, handles);
-            log::info!("[共享] 服务器启动成功: ips={:?}, port={}", ips, port);
-            Ok(ShareServerInfo { ips, port })
+        let server_app_state = Arc::new(app_state.clone());
+        let ips_clone = ips.clone();
+        std::thread::spawn(move || {
+            let result = server::start_http_server(&ips_clone, candidate, server_app_state);
+            let _ = tx.send(result);
+        });
+
+        let server_result = match tauri::async_runtime::spawn_blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(SERVER_START_TIMEOUT_SECS))
+        })
+        .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("[共享] 等待服务器启动失败: {}", e);
+                last_error = format!("等待服务器启动失败: {}", e);
+                continue;
+            }
+        };
+
+        match server_result {
+            Ok(Ok((server_arc, handles))) => {
+                server_handle = Some(server_arc);
+                worker_handles = handles;
+                started_port = candidate;
+                break;
+            }
+            Ok(Err(e)) => {
+                log::warn!("[共享] 端口 {} 启动失败: {}", candidate, e);
+                last_error = e;
+            }
+            Err(_) => {
+                log::warn!("[共享] 端口 {} 启动超时", candidate);
+                last_error = "服务器启动超时".to_string();
+            }
         }
-        Ok(Err(e)) => {
-            app_state.set_server_stopped();
-            log::error!("[共享] HTTP服务器启动失败: {}", e);
-            Err(AppError::IoError(e))
+    }
+
+    match server_handle {
+        Some(server_arc) => {
+            app_state.set_server_running(server_arc, worker_handles);
+            // 桌面端播放视频需要 asset 协议访问该文件夹
+            allow_shared_folder_asset_scope(&app, &folder_path);
+            log::info!(
+                "[共享] 服务器启动成功: ips={:?}, port={}",
+                ips,
+                started_port
+            );
+            Ok(ShareServerInfo {
+                ips,
+                port: started_port,
+            })
         }
-        Err(_) => {
+        None => {
             app_state.set_server_stopped();
-            log::error!("[共享] 服务器启动超时");
-            Err(AppError::IoError("服务器启动超时".to_string()))
+            log::error!("[共享] HTTP服务器启动失败: {}", last_error);
+            Err(AppError::IoError(last_error))
         }
     }
 }

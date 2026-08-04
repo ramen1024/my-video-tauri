@@ -16,7 +16,7 @@ use walkdir::WalkDir;
 use crate::constants::{MIN_VIDEO_FILE_SIZE_BYTES, VIDEO_SUPPORTED_EXTENSIONS};
 use crate::error::AppError;
 use crate::models::VideoFile;
-use crate::utils::{format_system_time, is_root_directory};
+use crate::utils::{allow_shared_folder_asset_scope, format_system_time, is_root_directory};
 use crate::video_cache::VideoCacheEntry;
 use crate::AppState;
 
@@ -29,14 +29,24 @@ pub async fn scan_videos(
     folder_path: String,
     use_cache: bool,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<Arc<Vec<VideoFile>>, AppError> {
     let app_state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        scan_videos_sync(folder_path, &app_state, use_cache)?;
-        Ok(app_state.shared_videos())
-    })
+    let scan_folder = folder_path.clone();
+
+    let videos = tauri::async_runtime::spawn_blocking(
+        move || -> Result<Arc<Vec<VideoFile>>, AppError> {
+            scan_videos_sync(scan_folder, &app_state, use_cache)?;
+            Ok(app_state.shared_videos())
+        },
+    )
     .await
-    .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))?
+    .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))??;
+
+    // 桌面端通过 asset 协议播放视频，扫描成功后放行该文件夹
+    allow_shared_folder_asset_scope(&app, &folder_path);
+
+    Ok(videos)
 }
 
 /// RAII 守卫：持有扫描互斥标记，作用域结束时自动释放
