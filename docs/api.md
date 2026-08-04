@@ -41,7 +41,6 @@ Content-Type: application/json
 ```json
 {
   "success": true,
-  "message": "认证成功",
   "token": "<session_token>"
 }
 ```
@@ -68,15 +67,17 @@ Content-Type: application/json
 ```json
 [
   {
+    "name": "demo.mp4",
+    "path": "C:\\videos\\movies\\demo.mp4",
     "relative_path": "movies/demo.mp4",
     "size": 123456789,
-    "name": "demo",
+    "modified": "2024-01-15 14:30:00",
     "extension": "mp4"
   }
 ]
 ```
 
-响应头包含 `ETag`，客户端可携带 `If-None-Match` 请求头。当数据未发生变化时，服务器返回 `304 Not Modified`，响应体为空。
+响应头包含 `ETag`（基于全部视频的路径/大小/修改时间生成的全量指纹），客户端可携带 `If-None-Match` 请求头。当数据未发生变化时，服务器返回 `304 Not Modified`，响应体为空。
 
 ---
 
@@ -130,8 +131,12 @@ Content-Type: application/json
 视频文件流式服务，支持 HTTP `Range` 请求，可用于浏览器拖动进度条播放。
 
 - `<relative_path>` 为视频文件相对于共享文件夹的路径，需要进行 URL 编码。
-- 请求头可包含 `Range: bytes=<start>-<end>`。
-- 返回 `200 OK`（完整内容）或 `206 Partial Content`（Range 请求）。
+- 请求头可包含 `Range: bytes=<start>-<end>`，支持以下形式：
+  - `bytes=0-499`：指定区间
+  - `bytes=100-`：从 100 到文件末尾
+  - `bytes=-500`：最后 500 字节（后缀范围）
+- 返回 `200 OK`（完整内容）、`206 Partial Content`（Range 请求）或 `416 Range Not Satisfiable`（起始超出文件大小、起始大于结束、空文件等无法满足的情况，响应头包含 `Content-Range: bytes */<文件大小>`）。
+- 多段范围（如 `bytes=0-100,200-300`）不在支持范围内，返回 416。
 - 响应头包含 `Accept-Ranges: bytes` 与 `Content-Type`（根据扩展名自动推断）。
 
 **示例请求：**

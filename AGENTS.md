@@ -34,11 +34,13 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 
 ## Backend (`src-tauri/src/`)
 
-- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、scan/refresh/cancel 标志、视频缓存）
+- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、scan/refresh/cancel 标志、视频缓存、ETag 缓存、PasswordState）
 - `commands/` — `#[tauri::command]` handlers: video.rs, share.rs, password_cmd.rs
 - `server/` — embedded HTTP server: handler.rs (routing), auth.rs, video_serve.rs (Range requests), response.rs
-- `password.rs` — password storage, sessions, rate limiting
-- `utils.rs` — IP detection, path sanitization, URL decoding
+- `password.rs` — `PasswordState`（由 AppState 持有）：Argon2id 哈希、session、IP 限流、随机 pepper
+- `video_cache.rs` — 扫描结果磁盘缓存（按文件夹维度，扫描时逐文件校验有效性）
+- `logging.rs` — 双写日志（控制台 + 应用数据目录文件，5MB 轮转）
+- `utils.rs` — IP detection, path sanitization, URL decoding, ETag 计算, asset scope 放行
 - `models.rs` — VideoFile, ShareServerInfo structs (Serialize only)
 - `error.rs` — AppError enum with `#[serde(tag, content)]` for Tauri IPC
 
@@ -50,8 +52,14 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 ## Quirks
 
 - Cargo.toml package name is `video-scanner`；中文名 `视频扫描器` 在 `tauri.conf.json`（productName、mainBinaryName）
-- 视频流式响应在独立线程中写出，不占用 HTTP worker；停止服务器时 worker `join` 带 5s 超时
+- 视频流式响应在独立线程中写出，不占用 HTTP worker；并发上限 16 路（`MAX_CONCURRENT_STREAMS`），超出时退回 worker 内同步写出形成背压
+- 停止服务器时 worker **并行** join，统一 5s 总超时（`SERVER_STOP_TIMEOUT_SECS`）；端口通过 unblock + Arc 归零释放
+- 共享端口被占用时自动尝试下一个端口，最多 5 个（`MAX_PORT_ATTEMPTS`）
 - 所有扫描入口统一经 `scan_videos_sync` 内的 `ScanGuard` 互斥（桌面扫描与网页 `/refresh` 共用，并发时返回"扫描正在进行中"）
+- 扫描结果按文件夹持久化到 `video_cache.json`；缓存命中需逐文件比对（相对路径 + 大小 + 修改时间），子目录变更也会使缓存失效
+- 视频列表 ETag 缓存在 AppState（按列表 Arc 指针复用），仅列表更换时重算
+- `tauri.conf.json` 中 `assetProtocol.scope` 为空，扫描成功后通过 `allow_shared_folder_asset_scope` 动态放行共享文件夹（桌面端播放依赖）
+- 密码 pepper 首次启动随机生成并持久化到 `password_config.json`；旧版固定 pepper 哈希验证通过后自动迁移
 - HTTP 服务器校验 `Host` 头（仅允许本机 IP / localhost），新增端点无需额外处理
 - Cargo uses USTC mirror (`src-tauri/.cargo/config.toml`)
 - Vite dev server fixed on port 1420; HMR on 1421
