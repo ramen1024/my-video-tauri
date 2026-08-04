@@ -7,7 +7,7 @@ use std::io::{Cursor, Read};
 
 /// 构造基础 HTTP 响应
 ///
-/// 设置状态码、Content-Type 和 Content-Length 头部
+/// 设置状态码、Content-Type、Content-Length 以及通用安全响应头
 fn build_response(
     status_code: u16,
     content_type: &str,
@@ -23,6 +23,8 @@ fn build_response(
             tiny_http::Header::from_bytes(&b"X-Content-Type-Options"[..], &b"nosniff"[..])
                 .unwrap(),
             tiny_http::Header::from_bytes(&b"Referrer-Policy"[..], &b"no-referrer"[..]).unwrap(),
+            // 禁止页面被嵌入 iframe，防止点击劫持
+            tiny_http::Header::from_bytes(&b"X-Frame-Options"[..], &b"DENY"[..]).unwrap(),
         ],
         cursor,
         Some(len),
@@ -46,8 +48,21 @@ pub fn html_response(html: &str) -> tiny_http::Response<Box<dyn Read + Send>> {
     resp.add_header(
         tiny_http::Header::from_bytes(
             &b"Content-Security-Policy"[..],
-            b"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'",
+            b"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'",
         ).unwrap(),
+    );
+    resp
+}
+
+/// 构造 416 Range Not Satisfiable 响应（带 Content-Range 提示实际文件大小）
+pub fn range_not_satisfiable_response(file_size: u64) -> tiny_http::Response<Box<dyn Read + Send>> {
+    let mut resp = text_response(416, "Range Not Satisfiable");
+    resp.add_header(
+        tiny_http::Header::from_bytes(
+            &b"Content-Range"[..],
+            format!("bytes */{}", file_size).as_bytes(),
+        )
+        .unwrap(),
     );
     resp
 }

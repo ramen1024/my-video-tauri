@@ -16,13 +16,14 @@ mod video_serve;
 
 use std::sync::Arc;
 
-use crate::constants::SERVER_WORKER_DEFAULT_COUNT;
-use crate::{AppState, ServerState};
+use crate::constants::{SERVER_WORKER_DEFAULT_COUNT, SERVER_WORKER_MAX_COUNT};
+use crate::AppState;
 
 /// 启动 HTTP 服务器
 ///
 /// 绑定 `0.0.0.0:port` 监听所有网络接口，创建多 worker 线程处理请求。
 /// 每个 worker 循环接收请求并交给 handler 处理，直到服务器状态变为非 Running。
+/// 视频流式响应在独立线程中写出，worker 只处理小请求，因此线程数设上限。
 ///
 /// # 返回
 /// - `Ok((server, handles))`: 服务器实例和 worker 线程句柄
@@ -42,7 +43,8 @@ pub fn start_http_server(
 
     let worker_count = std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(SERVER_WORKER_DEFAULT_COUNT);
+        .unwrap_or(SERVER_WORKER_DEFAULT_COUNT)
+        .min(SERVER_WORKER_MAX_COUNT);
 
     log::info!("[HTTP服务器] 启动: addr={}, workers={}", addr, worker_count);
 
@@ -54,19 +56,14 @@ pub fn start_http_server(
         let app_state = app_state.clone();
         let handle = std::thread::spawn(move || {
             loop {
+                // 服务器停止（含 Stopping 状态）时退出 worker 循环，
+                // 阻塞中的 recv 由调用方 unblock() 唤醒
                 if !app_state.is_server_running() {
                     break;
                 }
 
                 match server.incoming_requests().next() {
                     Some(mut request) => {
-                        let should_handle = {
-                            let state = app_state.server_state();
-                            matches!(state, ServerState::Running | ServerState::Stopping)
-                        };
-                        if !should_handle {
-                            break;
-                        }
                         let resp = handler::handle_request(&mut request, &ips, port, &app_state);
                         let url = request.url().to_string();
                         if url.starts_with("/video/") {

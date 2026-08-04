@@ -10,10 +10,67 @@ use std::path::Path;
 use crate::utils::sanitize_video_path;
 use crate::AppState;
 
+/// 解析 HTTP Range 请求头，返回满足的字节区间 `(start, end)`（闭区间）
+///
+/// 支持以下形式：
+/// - `bytes=0-499`：指定区间
+/// - `bytes=100-`：从 100 到文件末尾
+/// - `bytes=-500`：最后 500 字节（后缀范围）
+///
+/// 返回 `None` 表示：无 Range 头、非 bytes 单位、或区间无法满足
+/// （起始超出文件大小、起始大于结束、空文件、多段范围等）。
+/// 无法满足的情况由调用方返回 416。
+fn parse_range(range_header: Option<&str>, file_size: u64) -> Option<(u64, u64)> {
+    let range_value = range_header?;
+    if !range_value.starts_with("bytes=") {
+        return None;
+    }
+    if file_size == 0 {
+        return None;
+    }
+
+    let parts: Vec<&str> = range_value[6..].split('-').collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let start_part = parts[0];
+    let end_part = parts.get(1).copied().unwrap_or("");
+
+    // 多段范围（bytes=0-100,200-300）不在支持范围内
+    if end_part.contains(',') {
+        return None;
+    }
+
+    if start_part.is_empty() {
+        // 后缀范围 bytes=-N：返回最后 N 字节
+        let suffix_len = end_part.parse::<u64>().ok()?;
+        if suffix_len == 0 {
+            return None;
+        }
+        let start = file_size.saturating_sub(suffix_len);
+        return Some((start, file_size - 1));
+    }
+
+    let start = start_part.parse::<u64>().ok()?;
+    if start >= file_size {
+        return None;
+    }
+    let end = if end_part.is_empty() {
+        file_size - 1
+    } else {
+        end_part.parse::<u64>().ok()?.min(file_size - 1)
+    };
+    if start > end {
+        return None;
+    }
+    Some((start, end))
+}
+
 /// 处理视频文件请求
 ///
 /// 解析 URL 中的视频路径，验证安全性后返回文件内容。
-/// 支持 Range 请求头，返回 206 Partial Content 响应。
+/// 支持 Range 请求头，返回 206 Partial Content 响应；
+/// 无法满足的 Range 请求返回 416。
 pub fn handle_video_request(
     url: &str,
     range_header: Option<&str>,
@@ -44,37 +101,25 @@ pub fn handle_video_request(
 
     let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
-    let mut range_start = 0u64;
-    let mut range_end = file_size.saturating_sub(1);
-    let mut has_range = false;
+    let requested_bytes_range = range_header.is_some_and(|h| h.starts_with("bytes="));
 
-    if let Some(range_value) = range_header {
-        if range_value.starts_with("bytes=") {
-            let parts: Vec<&str> = range_value[6..].split('-').collect();
-            if let Some(start) = parts.first() {
-                if !start.is_empty() {
-                    range_start = start.parse().unwrap_or(0);
-                }
-            }
-            if let Some(end) = parts.get(1) {
-                if !end.is_empty() {
-                    range_end = end.parse().unwrap_or(file_size.saturating_sub(1));
-                }
-            }
-
-            if range_start <= range_end && range_start < file_size {
-                has_range = true;
-            } else {
-                range_start = 0;
-                range_end = file_size.saturating_sub(1);
-            }
+    let (range_start, range_end, has_range) = match parse_range(range_header, file_size) {
+        Some((start, end)) => (start, end, true),
+        None if requested_bytes_range => {
+            // 请求了 bytes 范围但无法满足 → 416
+            return super::response::range_not_satisfiable_response(file_size);
         }
-    }
+        None => (0, file_size.saturating_sub(1), false),
+    };
 
-    let content_length = range_end.saturating_sub(range_start) + 1;
+    let content_length = if file_size == 0 {
+        0
+    } else {
+        range_end.saturating_sub(range_start) + 1
+    };
 
     let mut file = file;
-    if file.seek(SeekFrom::Start(range_start)).is_err() {
+    if content_length > 0 && file.seek(SeekFrom::Start(range_start)).is_err() {
         return super::response::text_response(500, "Seek error");
     }
 
@@ -125,4 +170,51 @@ pub fn handle_video_request(
         Some(content_length as usize),
         None,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_range;
+
+    #[test]
+    fn test_parse_range_no_header() {
+        assert_eq!(parse_range(None, 1000), None);
+    }
+
+    #[test]
+    fn test_parse_range_interval() {
+        assert_eq!(parse_range(Some("bytes=0-499"), 1000), Some((0, 499)));
+        assert_eq!(parse_range(Some("bytes=500-"), 1000), Some((500, 999)));
+        assert_eq!(parse_range(Some("bytes=999-999"), 1000), Some((999, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_suffix() {
+        assert_eq!(parse_range(Some("bytes=-500"), 1000), Some((500, 999)));
+        assert_eq!(parse_range(Some("bytes=-0"), 1000), None);
+        assert_eq!(parse_range(Some("bytes=-2000"), 1000), Some((0, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_end_beyond_file() {
+        // 结束超出文件大小时截断到末尾
+        assert_eq!(parse_range(Some("bytes=0-2000"), 1000), Some((0, 999)));
+    }
+
+    #[test]
+    fn test_parse_range_unsatisfiable() {
+        // 起始超出文件大小
+        assert_eq!(parse_range(Some("bytes=1000-"), 1000), None);
+        assert_eq!(parse_range(Some("bytes=1001-2000"), 1000), None);
+        // 起始大于结束
+        assert_eq!(parse_range(Some("bytes=500-499"), 1000), None);
+        // 非数字
+        assert_eq!(parse_range(Some("bytes=abc-def"), 1000), None);
+        // 多段范围不在支持范围内
+        assert_eq!(parse_range(Some("bytes=0-100,200-300"), 1000), None);
+        // 空文件
+        assert_eq!(parse_range(Some("bytes=0-"), 0), None);
+        // 非 bytes 单位
+        assert_eq!(parse_range(Some("items=0-100"), 1000), None);
+    }
 }

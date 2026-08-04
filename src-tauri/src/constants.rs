@@ -39,3 +39,9 @@ pub const SERVER_STOP_TIMEOUT_SECS: u64 = 5;
 
 /// 共享服务器 worker 线程数回退默认值
 pub const SERVER_WORKER_DEFAULT_COUNT: usize = 4;
+
+/// 共享服务器 worker 线程数上限
+///
+/// worker 只处理小请求（视频流在独立线程写出），核心数再多也无收益，
+/// 限制上限避免高配机器创建大量空闲线程。
+pub const SERVER_WORKER_MAX_COUNT: usize = 16;

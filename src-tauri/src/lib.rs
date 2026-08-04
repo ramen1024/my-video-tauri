@@ -365,7 +365,6 @@ pub fn run() {
             commands::video::cancel_scan,
             commands::share::start_share_server,
             commands::share::stop_share_server,
-            commands::share::get_server_status,
             commands::password_cmd::get_password_status,
             commands::password_cmd::set_password_enabled,
             commands::password_cmd::set_password,

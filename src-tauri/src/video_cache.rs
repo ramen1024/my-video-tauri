@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_cache_get_missing_folder() {
         let cache_dir = make_temp_dir("cache_missing");
-        let mut cache = VideoCache::new(cache_dir.clone());
+        let cache = VideoCache::new(cache_dir.clone());
         let result = cache.get("/not/exist");
         assert!(result.is_none(), "未保存的文件夹应返回 None");
         let _ = fs::remove_dir_all(&cache_dir);

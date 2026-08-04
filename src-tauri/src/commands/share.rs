@@ -153,9 +153,3 @@ pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppErro
     log::info!("[共享] 服务器已停止");
     Ok(())
 }
-
-/// 查询共享服务器是否正在运行
-#[tauri::command]
-pub fn get_server_status(state: State<'_, AppState>) -> bool {
-    state.is_server_running()
-}
