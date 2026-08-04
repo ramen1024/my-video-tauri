@@ -125,18 +125,25 @@ pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppErro
 
     if !handles.is_empty() {
         tauri::async_runtime::spawn_blocking(move || {
+            // 并行 join 所有 worker，统一带总超时等待，避免极端情况下停止按钮永久挂起，
+            // 也避免按 worker 串行等待导致总耗时 = 数量 × 单次超时
+            let count = handles.len();
+            let (tx, rx) = std::sync::mpsc::channel();
             for handle in handles {
-                // 在独立线程中 join，主线程带超时等待，避免极端情况下停止按钮永久挂起
-                let (tx, rx) = std::sync::mpsc::channel();
+                let tx = tx.clone();
                 std::thread::spawn(move || {
                     let _ = handle.join();
                     let _ = tx.send(());
                 });
-                if rx
-                    .recv_timeout(std::time::Duration::from_secs(SERVER_STOP_TIMEOUT_SECS))
-                    .is_err()
-                {
+            }
+            drop(tx);
+            let deadline = std::time::Instant::now()
+                + std::time::Duration::from_secs(SERVER_STOP_TIMEOUT_SECS);
+            for _ in 0..count {
+                let remain = deadline.saturating_duration_since(std::time::Instant::now());
+                if rx.recv_timeout(remain).is_err() {
                     log::warn!("[共享] worker线程退出超时，跳过等待");
+                    break;
                 }
             }
             log::info!("[共享] 所有worker线程已退出");

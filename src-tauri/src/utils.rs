@@ -85,18 +85,26 @@ pub fn get_local_ips() -> Vec<String> {
 
 /// 实际检测本机 IP 地址（通过 if-addrs crate 调用系统 API）
 ///
-/// 过滤掉回环地址，如果获取失败则回退到 127.0.0.1
+/// 仅保留全局 IPv4 地址：过滤回环、IPv6 与链路本地地址
+/// （虚拟机/虚拟专用网络适配器的 IPv6 与 169.254.x.x 对局域网访问无意义）。
+/// 如果获取失败或没有可用地址，则回退到 127.0.0.1。
 fn detect_local_ips() -> Vec<String> {
     match if_addrs::get_if_addrs() {
         Ok(interfaces) => {
             let ips: Vec<String> = interfaces
                 .into_iter()
                 .filter_map(|iface| {
-                    if iface.is_loopback() {
-                        None
-                    } else {
-                        Some(iface.addr.ip().to_string())
+                    let ip = iface.addr.ip();
+                    // 仅保留全局 IPv4（过滤回环地址与 IPv6）
+                    if ip.is_loopback() || !ip.is_ipv4() {
+                        return None;
                     }
+                    let ip_str = ip.to_string();
+                    // APIPA 链路本地地址（169.254.0.0/16），局域网访问不可用
+                    if ip_str.starts_with("169.254.") {
+                        return None;
+                    }
+                    Some(ip_str)
                 })
                 .collect();
             if ips.is_empty() {

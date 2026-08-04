@@ -525,6 +525,7 @@
         const BUFFER_ITEMS = 5;
 
         let videos = [];
+        let lastEtag = '';
         let currentSort = { field: 'name', order: 'asc' };
         let searchTerm = '';
         let isRefreshing = false;
@@ -538,6 +539,10 @@
                     headers: { 'Cache-Control': 'no-cache' }
                 });
                 if (response.ok) {
+                    // ETag 未变化说明视频列表没有更新，跳过全量重渲染
+                    const etag = response.headers.get('ETag');
+                    if (etag && etag === lastEtag) return;
+                    lastEtag = etag || '';
                     const data = await response.json();
                     videos = data;
                     renderVideos();
