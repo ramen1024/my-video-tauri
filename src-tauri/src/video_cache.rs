@@ -1,7 +1,9 @@
 //! 视频扫描结果缓存模块
 //!
 //! 将扫描得到的视频列表按文件夹维度持久化到磁盘，避免每次启动共享服务器
-//! 都重新执行全量扫描。缓存以文件夹的修改时间（mtime）作为失效依据。
+//! 都重新执行全量扫描。缓存有效性由调用方在扫描时通过逐文件比对判定
+//! （见 `commands::video::cache_matches`），而非依赖文件夹 mtime——子目录中的
+//! 文件变更不会反映到顶层目录 mtime 上。
 
 use std::collections::HashMap;
 use std::fs;
@@ -17,8 +19,6 @@ use crate::models::VideoFile;
 pub struct VideoCacheEntry {
     /// 缓存的视频列表
     pub videos: Vec<VideoFile>,
-    /// 缓存时文件夹的修改时间（秒级 UNIX 时间戳）
-    pub folder_modified_time: u64,
     /// 缓存写入时间（秒级 UNIX 时间戳）
     pub cached_at: i64,
 }
@@ -96,20 +96,12 @@ impl VideoCache {
         Ok(())
     }
 
-    /// 获取指定文件夹的有效缓存
+    /// 获取指定文件夹的缓存条目
     ///
-    /// 仅当缓存条目的 `folder_modified_time` 与当前 mtime 一致时返回。
-    pub fn get(
-        &self,
-        folder_path: &str,
-        current_modified_time: u64,
-    ) -> Option<&VideoCacheEntry> {
-        let entry = self.entries.get(folder_path)?;
-        if entry.folder_modified_time == current_modified_time {
-            Some(entry)
-        } else {
-            None
-        }
+    /// 缓存是否仍有效由调用方在扫描时通过逐文件比对判定，
+    /// 此处仅负责按文件夹路径取回条目。
+    pub fn get(&self, folder_path: &str) -> Option<&VideoCacheEntry> {
+        self.entries.get(folder_path)
     }
 
     /// 更新指定文件夹的缓存并持久化到磁盘
@@ -144,7 +136,7 @@ mod tests {
         path
     }
 
-    fn sample_entry(folder_modified_time: u64) -> VideoCacheEntry {
+    fn sample_entry() -> VideoCacheEntry {
         VideoCacheEntry {
             videos: vec![VideoFile {
                 name: "test.mp4".to_string(),
@@ -154,35 +146,30 @@ mod tests {
                 modified: None,
                 extension: "mp4".to_string(),
             }],
-            folder_modified_time,
             cached_at: 0,
         }
     }
 
     #[test]
-    fn test_cache_get_when_mtime_matches() {
-        let cache_dir = make_temp_dir("cache_match");
+    fn test_cache_get_returns_stored_entry() {
+        let cache_dir = make_temp_dir("cache_get");
         let mut cache = VideoCache::new(cache_dir.clone());
         cache
-            .set("/fake/folder".to_string(), sample_entry(42))
+            .set("/fake/folder".to_string(), sample_entry())
             .expect("保存缓存应成功");
 
-        let result = cache.get("/fake/folder", 42);
-        assert!(result.is_some(), "mtime 匹配时应返回缓存");
-        assert_eq!(result.unwrap().folder_modified_time, 42);
+        let result = cache.get("/fake/folder");
+        assert!(result.is_some(), "已保存的文件夹应能获取到缓存");
+        assert_eq!(result.unwrap().videos.len(), 1);
         let _ = fs::remove_dir_all(&cache_dir);
     }
 
     #[test]
-    fn test_cache_get_when_mtime_differs() {
-        let cache_dir = make_temp_dir("cache_diff");
+    fn test_cache_get_missing_folder() {
+        let cache_dir = make_temp_dir("cache_missing");
         let mut cache = VideoCache::new(cache_dir.clone());
-        cache
-            .set("/fake/folder".to_string(), sample_entry(42))
-            .expect("保存缓存应成功");
-
-        let result = cache.get("/fake/folder", 43);
-        assert!(result.is_none(), "mtime 不同时应返回 None");
+        let result = cache.get("/not/exist");
+        assert!(result.is_none(), "未保存的文件夹应返回 None");
         let _ = fs::remove_dir_all(&cache_dir);
     }
 
@@ -194,17 +181,16 @@ mod tests {
         {
             let mut cache = VideoCache::new(cache_dir.clone());
             cache
-                .set(folder.to_string(), sample_entry(100))
+                .set(folder.to_string(), sample_entry())
                 .expect("保存缓存应成功");
         }
 
         {
             let mut cache = VideoCache::new(cache_dir.clone());
             cache.load().expect("加载缓存应成功");
-            let result = cache.get(folder, 100);
+            let result = cache.get(folder);
             assert!(result.is_some(), "加载后应能获取到缓存");
             let entry = result.unwrap();
-            assert_eq!(entry.folder_modified_time, 100);
             assert_eq!(entry.videos.len(), 1);
             assert_eq!(entry.videos[0].name, "test.mp4");
         }

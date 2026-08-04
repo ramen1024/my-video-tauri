@@ -1,14 +1,15 @@
 //! 视频扫描与管理命令
 //!
 //! 提供视频文件的扫描、获取、播放和取消扫描等 Tauri IPC 命令。
-//! 扫描使用 rayon 并行处理，支持通过 AppState 中的取消标志中止扫描。
+//! 扫描使用单次目录遍历提取元数据，结果同时用于缓存校验与最终列表构建，
+//! 缓存通过逐文件比对（路径/大小/修改时间）判定是否有效，支持通过
+//! AppState 中的取消标志中止扫描。
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
 
-use rayon::prelude::*;
 use tauri::State;
 use walkdir::WalkDir;
 
@@ -58,9 +59,101 @@ impl Drop for ScanGuard<'_> {
     }
 }
 
+/// 扫描过程中收集的原始文件信息（元数据已提取，可同时用于缓存校验与结果构建）
+struct ScannedFile {
+    /// 文件名（不含路径）
+    name: String,
+    /// 完整绝对路径
+    path: String,
+    /// 相对于扫描目录的相对路径（用于网页端访问）
+    relative_path: String,
+    /// 文件大小（字节）
+    size: u64,
+    /// 修改时间格式化字符串
+    modified: Option<String>,
+    /// 文件扩展名（小写）
+    extension: String,
+}
+
+impl ScannedFile {
+    fn into_video_file(self) -> VideoFile {
+        VideoFile {
+            name: self.name,
+            path: self.path,
+            relative_path: self.relative_path,
+            size: self.size,
+            modified: self.modified,
+            extension: self.extension,
+        }
+    }
+}
+
+/// 将遍历条目转换为 ScannedFile，应用扩展名与最小大小过滤
+fn entry_to_scanned_file(entry: &walkdir::DirEntry, base_path: &Path) -> Option<ScannedFile> {
+    if !entry.file_type().is_file() {
+        return None;
+    }
+
+    let ext = entry
+        .path()
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+    match ext.as_deref() {
+        Some(e) if VIDEO_SUPPORTED_EXTENSIONS.contains(&e) => {}
+        _ => return None,
+    }
+
+    let metadata = entry
+        .metadata()
+        .ok()
+        .or_else(|| fs::metadata(entry.path()).ok())?;
+    let size = metadata.len();
+
+    if size < MIN_VIDEO_FILE_SIZE_BYTES {
+        return None;
+    }
+
+    Some(ScannedFile {
+        name: entry
+            .path()
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        path: entry.path().to_string_lossy().to_string(),
+        relative_path: entry
+            .path()
+            .strip_prefix(base_path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        size,
+        modified: metadata.modified().ok().map(format_system_time),
+        extension: ext.unwrap_or_default(),
+    })
+}
+
+/// 校验缓存视频列表与本次扫描结果是否完全一致（相对路径、大小、修改时间逐项比对）
+///
+/// 目录内任何新增、删除、改名或内容变化（含子目录中的变更）都会导致校验失败，
+/// 从而触发重新扫描；校验通过即代表扫描结果与缓存等价，可直接复用缓存。
+fn cache_matches(cached: &[VideoFile], scanned: &[ScannedFile]) -> bool {
+    if cached.len() != scanned.len() {
+        return false;
+    }
+    let mut cached_map: HashMap<&str, (u64, Option<&str>)> = HashMap::with_capacity(cached.len());
+    for v in cached {
+        cached_map.insert(v.relative_path.as_str(), (v.size, v.modified.as_deref()));
+    }
+    scanned.iter().all(|s| {
+        cached_map
+            .get(s.relative_path.as_str())
+            .is_some_and(|(size, modified)| *size == s.size && *modified == s.modified.as_deref())
+    })
+}
+
 /// 同步执行视频扫描（在 spawn_blocking 中调用）
 ///
-/// 流程：验证路径 → 检查缓存 → 遍历文件 → 并行提取元数据 → 按名称排序 → 写入 AppState
+/// 流程：验证路径 → 单次遍历提取元数据 → 校验缓存 → 按名称排序 → 写入 AppState。
 ///
 /// # 参数
 /// - `folder_path`: 要扫描的文件夹路径
@@ -90,107 +183,47 @@ pub(crate) fn scan_videos_sync(
         ));
     }
 
-    let folder_modified_time = fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs()))
-        .unwrap_or(0);
-
-    if use_cache {
-        let cached_entry = app_state
-            .video_cache()
-            .lock()
-            .get(&folder_path, folder_modified_time)
-            .cloned();
-
-        if let Some(entry) = cached_entry {
-            let count = entry.videos.len();
-            let folder = folder_path.clone();
-            app_state.set_shared_videos(entry.videos);
-            app_state.set_shared_folder_path(folder_path);
-            log::info!("[扫描] 从缓存加载 {} 个视频: {}", count, folder);
-            return Ok(());
-        }
-    }
-
-    let base_path = Path::new(&folder_path).to_path_buf();
+    let base_path = path.to_path_buf();
 
     app_state.reset_cancel_scan_flag();
 
-    let entries: Vec<_> = WalkDir::new(&folder_path)
+    // 单次遍历：过滤 + 提取元数据，结果同时用于缓存校验与最终列表构建
+    let scanned: Vec<ScannedFile> = WalkDir::new(&folder_path)
         .follow_links(false)
         .into_iter()
         .take_while(|_| !app_state.is_scan_cancelled())
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            if !e.file_type().is_file() {
-                return false;
-            }
-            let ext = e
-                .path()
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_lowercase());
-            matches!(ext, Some(ref e) if VIDEO_SUPPORTED_EXTENSIONS.contains(&e.as_str()))
-        })
+        .filter_map(|entry| entry_to_scanned_file(&entry, &base_path))
         .collect();
 
     if app_state.is_scan_cancelled() {
         return Err(AppError::ScanCancelled("扫描已取消".to_string()));
     }
 
-    let mut videos: Vec<VideoFile> = entries
-        .into_par_iter()
-        .filter_map(|entry| {
-            if app_state.is_scan_cancelled() {
-                return None;
+    // 缓存校验：与扫描结果逐文件比对，目录内任何变化（含子目录）都会使缓存失效
+    if use_cache {
+        let cached_entry = app_state.video_cache().lock().get(&folder_path).cloned();
+        if let Some(entry) = cached_entry {
+            if cache_matches(&entry.videos, &scanned) {
+                let count = entry.videos.len();
+                app_state.set_shared_videos(entry.videos);
+                app_state.set_shared_folder_path(folder_path.clone());
+                log::info!("[扫描] 缓存有效，加载 {} 个视频: {}", count, folder_path);
+                return Ok(());
             }
-
-            let path = entry.path();
-            let ext_lower = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_lowercase())?;
-
-            let metadata = entry.metadata().ok().or_else(|| fs::metadata(path).ok())?;
-            let size = metadata.len();
-
-            if size < MIN_VIDEO_FILE_SIZE_BYTES {
-                return None;
-            }
-
-            let modified = metadata.modified().ok().map(format_system_time);
-
-            let relative_path = path
-                .strip_prefix(&base_path)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            Some(VideoFile {
-                name: path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default(),
-                path: path.to_string_lossy().to_string(),
-                relative_path,
-                size,
-                modified,
-                extension: ext_lower,
-            })
-        })
-        .collect();
-
-    if app_state.is_scan_cancelled() {
-        return Err(AppError::ScanCancelled("扫描已取消".to_string()));
+        }
     }
+
+    let mut videos: Vec<VideoFile> = scanned
+        .into_iter()
+        .map(ScannedFile::into_video_file)
+        .collect();
 
     videos.sort_by_cached_key(|v| v.name.to_lowercase());
 
-    let cached_at = chrono::Utc::now().timestamp();
     let cache_entry = VideoCacheEntry {
         videos: videos.clone(),
-        folder_modified_time,
-        cached_at,
+        cached_at: chrono::Utc::now().timestamp(),
     };
 
     if let Err(e) = app_state
@@ -390,5 +423,113 @@ mod tests {
 
         let _ = fs::remove_dir_all(&scan_dir);
         let _ = fs::remove_dir_all(&target_dir);
+    }
+
+    fn sample_cached_video(relative_path: &str, size: u64, modified: Option<&str>) -> VideoFile {
+        VideoFile {
+            name: relative_path
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(relative_path)
+                .to_string(),
+            path: format!("C:\\videos\\{}", relative_path),
+            relative_path: relative_path.to_string(),
+            size,
+            modified: modified.map(|m| m.to_string()),
+            extension: "mp4".to_string(),
+        }
+    }
+
+    fn sample_scanned(relative_path: &str, size: u64, modified: Option<&str>) -> ScannedFile {
+        ScannedFile {
+            name: relative_path
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(relative_path)
+                .to_string(),
+            path: format!("C:\\videos\\{}", relative_path),
+            relative_path: relative_path.to_string(),
+            size,
+            modified: modified.map(|m| m.to_string()),
+            extension: "mp4".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_cache_matches_identical_lists() {
+        let cached = vec![
+            sample_cached_video("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_cached_video("b.mp4", 200, None),
+        ];
+        let scanned = vec![
+            sample_scanned("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_scanned("b.mp4", 200, None),
+        ];
+        assert!(cache_matches(&cached, &scanned), "完全一致的列表应校验通过");
+    }
+
+    #[test]
+    fn test_cache_matches_rejects_changes() {
+        let cached = vec![
+            sample_cached_video("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_cached_video("b.mp4", 200, None),
+        ];
+
+        // 大小变化
+        let size_changed = vec![
+            sample_scanned("a.mp4", 101, Some("2024-01-01 10:00:00")),
+            sample_scanned("b.mp4", 200, None),
+        ];
+        assert!(!cache_matches(&cached, &size_changed), "大小变化应校验失败");
+
+        // 改名（相对路径变化）
+        let renamed = vec![
+            sample_scanned("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_scanned("bb.mp4", 200, None),
+        ];
+        assert!(!cache_matches(&cached, &renamed), "改名应校验失败");
+
+        // 修改时间变化
+        let time_changed = vec![
+            sample_scanned("a.mp4", 100, Some("2024-06-01 10:00:00")),
+            sample_scanned("b.mp4", 200, None),
+        ];
+        assert!(!cache_matches(&cached, &time_changed), "修改时间变化应校验失败");
+
+        // 多一个文件
+        let extra = vec![
+            sample_scanned("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_scanned("b.mp4", 200, None),
+            sample_scanned("c.mp4", 300, None),
+        ];
+        assert!(!cache_matches(&cached, &extra), "文件数量变化应校验失败");
+    }
+
+    #[test]
+    fn test_cache_invalidated_by_subdirectory_change() {
+        // 回归测试：子目录中新增文件不改变顶层目录 mtime，
+        // 缓存校验必须感知到该变化并触发重新扫描
+        let scan_dir = make_temp_dir("cache_subdir");
+        let sub = scan_dir.join("sub");
+        fs::create_dir_all(&sub).expect("创建子目录失败");
+        create_test_video(&sub.join("one.mp4"), MIN_VIDEO_FILE_SIZE_BYTES);
+
+        let app_state = AppState::new();
+        let path = scan_dir.to_string_lossy().to_string();
+
+        scan_videos_sync(path.clone(), &app_state, true).expect("首次扫描应成功");
+        assert_eq!(app_state.shared_videos().len(), 1, "首次扫描应发现 1 个视频");
+
+        // 在子目录中新增视频（顶层目录 mtime 不会变化）
+        create_test_video(&sub.join("two.mp4"), MIN_VIDEO_FILE_SIZE_BYTES);
+
+        scan_videos_sync(path, &app_state, true).expect("再次扫描应成功");
+        assert_eq!(
+            app_state.shared_videos().len(),
+            2,
+            "子目录新增文件后缓存应失效并重新扫描"
+        );
+
+        let _ = fs::remove_dir_all(&scan_dir);
     }
 }

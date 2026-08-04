@@ -1,14 +1,16 @@
 //! 工具函数模块
 //!
-//! 提供路径验证、IP 检测、URL 解码等通用工具函数。
+//! 提供路径验证、IP 检测、URL 解码、ETag 计算等通用工具函数。
 
 use std::path::Path;
 use std::sync::LazyLock;
 use std::time::SystemTime;
 
 use parking_lot::RwLock;
+use sha2::{Digest, Sha256};
 
 use crate::constants::IP_CACHE_TTL_SECS;
+use crate::models::VideoFile;
 
 /// IP 地址缓存，存储 (IP列表, 缓存时间)
 static CACHED_IPS: LazyLock<RwLock<Option<(Vec<String>, std::time::Instant)>>> =
@@ -117,6 +119,29 @@ pub fn urlencoding_decode(input: &str) -> String {
         .to_string()
 }
 
+/// 为视频列表计算稳定 ETag（SHA-256 十六进制，不含引号）
+///
+/// 基于全部视频的 (相对路径, 大小, 修改时间) 计算指纹，任意文件的新增、删除、改名、
+/// 大小或修改时间变化都会导致 ETag 变化，避免只取首尾文件时中间文件变更产生碰撞、
+/// 导致网页端缓存一直显示陈旧列表。
+///
+/// 各字段之间以 0xFF 分隔，避免相邻字段字节拼接产生歧义。
+/// 计算仅借用数据，不产生字符串克隆。
+pub fn compute_videos_etag(videos: &[VideoFile]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(videos.len().to_be_bytes());
+    for v in videos {
+        hasher.update(v.relative_path.as_bytes());
+        hasher.update(&[0xFF]);
+        hasher.update(v.size.to_be_bytes());
+        hasher.update(&[0xFF]);
+        hasher.update(v.modified.as_deref().unwrap_or("").as_bytes());
+        hasher.update(&[0xFF]);
+    }
+    let result = hasher.finalize();
+    result.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
 /// 验证请求路径是否在允许的目录范围内，防止路径遍历攻击
 ///
 /// # 安全检查
@@ -199,6 +224,76 @@ mod tests {
         assert!(
             !is_root_directory(Path::new("/home")),
             "普通 Unix 子目录不应是根目录"
+        );
+    }
+
+    fn sample_video(relative_path: &str, size: u64, modified: Option<&str>) -> VideoFile {
+        VideoFile {
+            name: relative_path
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(relative_path)
+                .to_string(),
+            path: format!("C:\\videos\\{}", relative_path),
+            relative_path: relative_path.to_string(),
+            size,
+            modified: modified.map(|m| m.to_string()),
+            extension: "mp4".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_compute_videos_etag_is_stable() {
+        let videos = vec![
+            sample_video("a.mp4", 1024, Some("2024-01-01 10:00:00")),
+            sample_video("b.mp4", 2048, Some("2024-01-02 10:00:00")),
+        ];
+        let etag1 = compute_videos_etag(&videos);
+        let etag2 = compute_videos_etag(&videos);
+        assert_eq!(etag1, etag2, "同一视频列表生成的 ETag 应保持一致");
+        assert_eq!(etag1.len(), 64, "SHA-256 十六进制输出长度应为 64");
+    }
+
+    #[test]
+    fn test_compute_videos_etag_differs_for_different_lists() {
+        let videos_a = vec![sample_video("a.mp4", 1024, None)];
+        let videos_b = vec![sample_video("a.mp4", 2048, None)];
+        assert_ne!(
+            compute_videos_etag(&videos_a),
+            compute_videos_etag(&videos_b),
+            "文件大小变化应生成不同 ETag"
+        );
+    }
+
+    #[test]
+    fn test_compute_videos_etag_changes_when_middle_file_renamed() {
+        // 回归测试：中间文件改名（首尾与总数不变）也必须改变 ETag，
+        // 否则网页端会因命中 304 一直显示陈旧列表。
+        let videos_before = vec![
+            sample_video("a.mp4", 1024, None),
+            sample_video("b.mp4", 2048, None),
+            sample_video("c.mp4", 4096, None),
+        ];
+        let videos_after = vec![
+            sample_video("a.mp4", 1024, None),
+            sample_video("bb.mp4", 2048, None),
+            sample_video("c.mp4", 4096, None),
+        ];
+        assert_ne!(
+            compute_videos_etag(&videos_before),
+            compute_videos_etag(&videos_after),
+            "中间文件改名应生成不同 ETag"
+        );
+    }
+
+    #[test]
+    fn test_compute_videos_etag_changes_when_modified_time_changes() {
+        let videos_before = vec![sample_video("a.mp4", 1024, Some("2024-01-01 10:00:00"))];
+        let videos_after = vec![sample_video("a.mp4", 1024, Some("2024-06-01 10:00:00"))];
+        assert_ne!(
+            compute_videos_etag(&videos_before),
+            compute_videos_etag(&videos_after),
+            "修改时间变化应生成不同 ETag"
         );
     }
 }

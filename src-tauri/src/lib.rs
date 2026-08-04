@@ -64,6 +64,8 @@ pub struct AppState {
     refresh_cooldown: Arc<AtomicBool>,
     /// 最近一次刷新操作的结果（JSON 字符串）
     refresh_result: Arc<RwLock<Option<String>>>,
+    /// 视频列表 ETag 缓存：(列表 Arc 指针, 指纹)。指针一致时复用，避免每次请求全量计算
+    videos_etag: Arc<RwLock<Option<(Arc<Vec<VideoFile>>, String)>>>,
     /// 视频扫描结果缓存
     video_cache: Arc<Mutex<video_cache::VideoCache>>,
 }
@@ -82,6 +84,7 @@ impl AppState {
             refresh_in_progress: Arc::new(AtomicBool::new(false)),
             refresh_cooldown: Arc::new(AtomicBool::new(false)),
             refresh_result: Arc::new(RwLock::new(None)),
+            videos_etag: Arc::new(RwLock::new(None)),
             video_cache: Arc::new(Mutex::new(video_cache::VideoCache::new(
                 std::env::temp_dir(),
             ))),
@@ -108,6 +111,25 @@ impl AppState {
     /// 设置当前共享的文件夹路径
     pub fn set_shared_folder_path(&self, path: String) {
         *self.shared_folder_path.write() = path;
+    }
+
+    /// 获取当前视频列表的 ETag 指纹
+    ///
+    /// 以列表的 Arc 指针作为缓存键：列表对象未更换时直接复用已计算的指纹；
+    /// 更换（扫描/刷新写入新列表）时自动重算，保证指纹与列表严格对应，不会返回陈旧值。
+    pub fn videos_etag(&self) -> String {
+        let current = self.shared_videos();
+        {
+            let guard = self.videos_etag.read();
+            if let Some((ref cached_arc, ref etag)) = *guard {
+                if Arc::ptr_eq(cached_arc, &current) {
+                    return etag.clone();
+                }
+            }
+        }
+        let etag = crate::utils::compute_videos_etag(&current);
+        *self.videos_etag.write() = Some((current, etag.clone()));
+        etag
     }
 
     // ---------------- 视频扫描缓存 ----------------
