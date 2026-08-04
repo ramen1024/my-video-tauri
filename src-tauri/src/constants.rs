@@ -48,3 +48,9 @@ pub const SERVER_WORKER_MAX_COUNT: usize = 16;
 
 /// 端口被占用时自动尝试的端口数量（从指定端口开始向后尝试）
 pub const MAX_PORT_ATTEMPTS: u16 = 5;
+
+/// 视频流式响应最大并发数
+///
+/// 每路视频流各占一个独立线程，超出上限的请求退回 worker 内同步写出，
+/// 避免并发观看人数过多时线程数无限膨胀。
+pub const MAX_CONCURRENT_STREAMS: usize = 16;

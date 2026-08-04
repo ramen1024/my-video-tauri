@@ -12,8 +12,11 @@ use sha2::{Digest, Sha256};
 use crate::constants::IP_CACHE_TTL_SECS;
 use crate::models::VideoFile;
 
+/// IP 地址缓存类型：(IP列表, 缓存时间)
+type IpCacheValue = (Vec<String>, std::time::Instant);
+
 /// IP 地址缓存，存储 (IP列表, 缓存时间)
-static CACHED_IPS: LazyLock<RwLock<Option<(Vec<String>, std::time::Instant)>>> =
+static CACHED_IPS: LazyLock<RwLock<Option<IpCacheValue>>> =
     LazyLock::new(|| RwLock::new(None));
 
 /// 将系统时间格式化为可读字符串
@@ -152,11 +155,11 @@ pub fn compute_videos_etag(videos: &[VideoFile]) -> String {
     hasher.update(videos.len().to_be_bytes());
     for v in videos {
         hasher.update(v.relative_path.as_bytes());
-        hasher.update(&[0xFF]);
+        hasher.update([0xFF]);
         hasher.update(v.size.to_be_bytes());
-        hasher.update(&[0xFF]);
+        hasher.update([0xFF]);
         hasher.update(v.modified.as_deref().unwrap_or("").as_bytes());
-        hasher.update(&[0xFF]);
+        hasher.update([0xFF]);
     }
     let result = hasher.finalize();
     result.iter().map(|b| format!("{:02x}", b)).collect()

@@ -5,7 +5,7 @@
 use std::io::Read;
 
 use crate::constants::{MAX_AUTH_BODY_SIZE_BYTES, SESSION_DURATION_SECS};
-use crate::password;
+use crate::AppState;
 
 /// Session cookie 有效期（秒），与 `SESSION_DURATION_SECS` 保持一致。
 const SESSION_COOKIE_MAX_AGE_SECS: i64 = SESSION_DURATION_SECS;
@@ -19,8 +19,12 @@ const COOKIE_SECURE: bool = false;
 ///
 /// 从请求体中解析密码，调用 password 模块进行认证。
 /// 认证成功时设置 HttpOnly + SameSite=Strict 的 session cookie。
-pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<dyn Read + Send>> {
-    password::cleanup_expired_sessions();
+pub fn handle_auth(
+    request: &mut tiny_http::Request,
+    app_state: &AppState,
+) -> tiny_http::Response<Box<dyn Read + Send>> {
+    let password_state = app_state.password();
+    password_state.cleanup_expired_sessions();
 
     let content_length = request.body_length().unwrap_or(0) as u64;
 
@@ -49,7 +53,7 @@ pub fn handle_auth(request: &mut tiny_http::Request) -> tiny_http::Response<Box<
                 return super::response::json_response(400, r#"{"success": false, "message": "请输入密码"}"#);
             }
 
-            match password::authenticate_web_request(&ip, pwd) {
+            match password_state.authenticate_web_request(&ip, pwd) {
                 Ok(token) => {
                     let json = serde_json::json!({"success": true, "token": token});
                     let mut resp = super::response::json_response(200, &json.to_string());

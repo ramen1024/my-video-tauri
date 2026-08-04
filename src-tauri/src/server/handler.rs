@@ -14,7 +14,6 @@
 use std::io::Read;
 
 use crate::constants::REFRESH_COOLDOWN_SECS;
-use crate::password;
 use crate::AppState;
 
 /// 登录页面 HTML 模板（编译时嵌入）
@@ -52,10 +51,10 @@ pub fn handle_request(
     let method = request.method().clone();
 
     if url == "/auth" && method == tiny_http::Method::Post {
-        return super::auth::handle_auth(request);
+        return super::auth::handle_auth(request, app_state);
     }
 
-    if password::is_password_enabled() {
+    if app_state.password().is_enabled() {
         let cookie_header = request
             .headers()
             .iter()
@@ -63,7 +62,7 @@ pub fn handle_request(
             .map(|h| h.value.as_str())
             .unwrap_or("");
 
-        if !password::check_web_auth(cookie_header) {
+        if !app_state.password().check_web_auth(cookie_header) {
             if url == "/login" || url == "/login.html" {
                 return super::response::html_response(LOGIN_PAGE);
             }

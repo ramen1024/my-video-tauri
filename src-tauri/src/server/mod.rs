@@ -14,10 +14,46 @@ mod handler;
 mod response;
 mod video_serve;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crate::constants::{SERVER_WORKER_DEFAULT_COUNT, SERVER_WORKER_MAX_COUNT};
+use crate::constants::{
+    MAX_CONCURRENT_STREAMS, SERVER_WORKER_DEFAULT_COUNT, SERVER_WORKER_MAX_COUNT,
+};
 use crate::AppState;
+
+/// 简单计数信号量：限制视频流式响应并发线程数
+struct StreamLimiter {
+    available: AtomicUsize,
+}
+
+impl StreamLimiter {
+    fn new(max: usize) -> Self {
+        Self {
+            available: AtomicUsize::new(max),
+        }
+    }
+
+    /// 尝试获取一个许可，成功时返回 RAII 许可
+    fn try_acquire(self: &Arc<Self>) -> Option<StreamPermit> {
+        let acquired = self
+            .available
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+                (n > 0).then_some(n - 1)
+            })
+            .is_ok();
+        acquired.then(|| StreamPermit(self.clone()))
+    }
+}
+
+/// RAII 信号量许可：作用域结束时自动归还计数
+struct StreamPermit(Arc<StreamLimiter>);
+
+impl Drop for StreamPermit {
+    fn drop(&mut self) {
+        self.0.available.fetch_add(1, Ordering::Release);
+    }
+}
 
 /// 启动 HTTP 服务器
 ///
@@ -48,12 +84,17 @@ pub fn start_http_server(
 
     log::info!("[HTTP服务器] 启动: addr={}, workers={}", addr, worker_count);
 
+    // 视频流式响应并发上限：超出时在 worker 内同步写出形成背压，
+    // 避免每路视频流各开一个线程导致线程数无限膨胀
+    let stream_limiter = Arc::new(StreamLimiter::new(MAX_CONCURRENT_STREAMS));
+
     let mut handles = Vec::with_capacity(worker_count);
 
     for _ in 0..worker_count {
         let server = server.clone();
         let ips = ips.clone();
         let app_state = app_state.clone();
+        let stream_limiter = stream_limiter.clone();
         let handle = std::thread::spawn(move || {
             loop {
                 // 服务器停止（含 Stopping 状态）时退出 worker 循环，
@@ -69,9 +110,18 @@ pub fn start_http_server(
                         if url.starts_with("/video/") {
                             // 视频流式响应可能长时间占用连接，放到独立线程写出，
                             // 避免阻塞 worker 循环，影响 /videos、/refresh、/auth 等请求。
-                            std::thread::spawn(move || {
-                                let _ = request.respond(resp);
-                            });
+                            match stream_limiter.try_acquire() {
+                                Some(permit) => {
+                                    std::thread::spawn(move || {
+                                        let _ = request.respond(resp);
+                                        drop(permit);
+                                    });
+                                }
+                                None => {
+                                    // 并发流已达上限：退回在 worker 内同步写出（背压）
+                                    request.respond(resp).ok();
+                                }
+                            }
                         } else {
                             request.respond(resp).ok();
                         }

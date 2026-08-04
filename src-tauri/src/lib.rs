@@ -44,6 +44,9 @@ pub enum ServerState {
     Stopping,
 }
 
+/// 视频列表 ETag 缓存值：(列表 Arc 指针, 指纹)。指针一致时复用，避免每次请求全量计算
+type VideosEtagCacheValue = (Arc<Vec<VideoFile>>, String);
+
 /// Tauri 托管的应用状态
 ///
 /// 替代原有的全局 static 变量，所有运行期状态都通过 Tauri 的 State 机制注入到命令中。
@@ -71,7 +74,9 @@ pub struct AppState {
     /// 最近一次刷新操作的结果（JSON 字符串）
     refresh_result: Arc<RwLock<Option<String>>>,
     /// 视频列表 ETag 缓存：(列表 Arc 指针, 指纹)。指针一致时复用，避免每次请求全量计算
-    videos_etag: Arc<RwLock<Option<(Arc<Vec<VideoFile>>, String)>>>,
+    videos_etag: Arc<RwLock<Option<VideosEtagCacheValue>>>,
+    /// 密码保护状态（哈希、session、频率限制、配置目录）
+    password: Arc<password::PasswordState>,
     /// 视频扫描结果缓存
     video_cache: Arc<Mutex<video_cache::VideoCache>>,
 }
@@ -91,6 +96,7 @@ impl AppState {
             refresh_cooldown: Arc::new(AtomicBool::new(false)),
             refresh_result: Arc::new(RwLock::new(None)),
             videos_etag: Arc::new(RwLock::new(None)),
+            password: Arc::new(password::PasswordState::new()),
             video_cache: Arc::new(Mutex::new(video_cache::VideoCache::new(
                 std::env::temp_dir(),
             ))),
@@ -136,6 +142,18 @@ impl AppState {
         let etag = crate::utils::compute_videos_etag(&current);
         *self.videos_etag.write() = Some((current, etag.clone()));
         etag
+    }
+
+    // ---------------- 密码保护 ----------------
+
+    /// 获取密码保护状态（引用，用于状态查询与方法调用）
+    pub fn password(&self) -> &password::PasswordState {
+        &self.password
+    }
+
+    /// 获取密码保护状态的 Arc 引用（用于后台清理线程持有）
+    pub fn password_arc(&self) -> Arc<password::PasswordState> {
+        self.password.clone()
     }
 
     // ---------------- 视频扫描缓存 ----------------
@@ -355,13 +373,13 @@ pub fn run() {
             let app_state = AppState::new();
 
             if let Ok(data_dir) = app.path().app_data_dir() {
-                password::set_config_dir(data_dir.clone());
+                app_state.password().set_config_dir(data_dir.clone());
                 app_state.set_video_cache_dir(data_dir.clone());
                 logging::set_log_file(data_dir);
             }
 
-            password::load_password_config();
-            password::start_cleanup_thread();
+            app_state.password().load_config();
+            password::start_cleanup_thread(app_state.password_arc());
             app.manage(app_state);
             Ok(())
         })
