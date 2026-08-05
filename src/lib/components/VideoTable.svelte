@@ -160,15 +160,15 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     gap: 12px;
-    background: #111827;
+    background: var(--surface);
   }
 
   .video-count {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
     font-weight: 500;
   }
 
@@ -183,41 +183,41 @@
     left: 10px;
     top: 50%;
     transform: translateY(-50%);
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-faint);
     pointer-events: none;
   }
 
   .search-box input {
     width: 100%;
     padding: 7px 12px 7px 30px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
     font-size: 13px;
-    background: rgba(255, 255, 255, 0.04);
-    color: #f8fafc;
+    background: var(--surface-hover);
+    color: var(--text);
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .search-box input:focus {
     outline: none;
-    border-color: rgba(59, 130, 246, 0.5);
-    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--accent-border-strong);
+    background: var(--surface-raised);
   }
 
   .search-box input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-faint);
   }
 
   .no-results {
     padding: 32px 16px;
     text-align: center;
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-tertiary);
     font-size: 13px;
   }
 
   .table-header {
-    background: #0f172a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
 
@@ -231,7 +231,7 @@
     padding: 11px 16px;
     text-align: left;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--text-secondary);
     font-size: 11px;
     letter-spacing: 0.4px;
     text-transform: uppercase;
@@ -251,11 +251,11 @@
   }
 
   .sort-btn:hover {
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--text-strong);
   }
 
   .sort-btn.active {
-    color: #60a5fa;
+    color: var(--accent-light);
   }
 
   .sort-icon {
@@ -266,7 +266,7 @@
     flex: 1;
     overflow: auto;
     position: relative;
-    background: #111827;
+    background: var(--surface);
   }
 
   .table-body {
@@ -283,13 +283,13 @@
     grid-template-columns: minmax(200px, 1fr) 100px 150px 64px;
     align-items: center;
     box-sizing: border-box;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--border-faint);
     cursor: pointer;
     transition: background-color 0.12s ease;
   }
 
   .table-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--surface-hover);
   }
 
   .table-row > div {
@@ -306,11 +306,11 @@
 
   .col-size {
     text-align: right;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
   }
 
   .col-date {
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--text-tertiary);
   }
 
   .col-action {
@@ -319,14 +319,14 @@
 
   .video-name {
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--text-strong);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .video-ext {
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-faint);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
@@ -339,16 +339,16 @@
     justify-content: center;
     width: 30px;
     height: 30px;
-    background: #2563eb;
+    background: var(--accent-strong);
     border: none;
     border-radius: 50%;
-    color: #ffffff;
+    color: var(--white);
     cursor: pointer;
     transition: background-color 0.15s ease;
   }
 
   .play-btn:hover {
-    background: #3b82f6;
+    background: var(--accent);
   }
 
   .system-btn {
@@ -356,16 +356,16 @@
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-hover);
+    color: var(--text-secondary);
     transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .system-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.85);
+    background: var(--surface-raised);
+    color: var(--text-strong);
   }
 
   .table-body-container::-webkit-scrollbar {
@@ -378,11 +378,11 @@
   }
 
   .table-body-container::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--surface-pressed);
     border-radius: 3px;
   }
 
   .table-body-container::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--text-tertiary);
   }
 </style>

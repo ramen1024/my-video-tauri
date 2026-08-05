@@ -177,9 +177,9 @@
     flex-direction: column;
     gap: 12px;
     padding: 14px;
-    background: #111827;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     margin-bottom: 12px;
   }
 
@@ -192,7 +192,7 @@
   .panel-title {
     font-size: 14px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--text-strong);
   }
 
   .toggle-btn {
@@ -202,15 +202,15 @@
     border-radius: 20px;
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.55);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-hover);
+    color: var(--text-secondary);
   }
 
   .toggle-btn.active {
-    background: rgba(16, 185, 129, 0.12);
-    border-color: rgba(16, 185, 129, 0.25);
-    color: #34d399;
+    background: var(--success-soft);
+    border-color: var(--success-border);
+    color: var(--success-light);
   }
 
   .pwd-show-area {
@@ -227,15 +227,15 @@
   .pwd-digit {
     font-size: 22px;
     font-weight: 700;
-    color: #60a5fa;
-    width: 34px;
-    height: 42px;
+    color: var(--accent-light);
+    width: 42px;
+    height: 52px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    border-radius: 8px;
+    background: var(--accent-soft);
+    border: 1.5px solid var(--accent-border);
+    border-radius: var(--radius-md);
   }
 
   .pwd-actions-row,
@@ -250,36 +250,36 @@
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.65);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-hover);
+    color: var(--text-secondary);
     transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
 
   .action-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.85);
+    background: var(--surface-raised);
+    color: var(--text-strong);
   }
 
   .action-btn.primary {
-    background: rgba(59, 130, 246, 0.15);
-    border-color: rgba(59, 130, 246, 0.25);
-    color: #60a5fa;
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent-light);
   }
 
   .action-btn.primary:hover {
-    background: rgba(59, 130, 246, 0.25);
+    background: var(--accent-soft-hover);
   }
 
   .action-btn.copy:hover {
-    border-color: rgba(59, 130, 246, 0.3);
-    color: #60a5fa;
+    border-color: var(--accent-border);
+    color: var(--accent-light);
   }
 
   .action-btn.danger:hover {
-    border-color: rgba(239, 68, 68, 0.3);
-    color: #fca5a5;
+    border-color: var(--danger-border);
+    color: var(--danger);
   }
 
   .pwd-setup-area {
@@ -290,6 +290,6 @@
 
   .setup-hint {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--text-tertiary);
   }
 </style>

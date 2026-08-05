@@ -19,6 +19,7 @@
   import VideoTable from "$lib/components/VideoTable.svelte";
   import SharePanel from "$lib/components/SharePanel.svelte";
   import PasswordPanel from "$lib/components/PasswordPanel.svelte";
+  import "$lib/styles/theme.css";
   import "$lib/styles/buttons.css";
 
   let videos = $state<VideoFile[]>([]);
@@ -139,7 +140,7 @@
   {/if}
 
   {#if isSharing && shareInfo}
-    <SharePanel {shareInfo} onStop={stopShare} />
+    <SharePanel {shareInfo} />
     <PasswordPanel
       {passwordStatus}
       onStatusChange={(s) => { passwordStatus = s; }}
@@ -173,7 +174,7 @@
     flex-direction: column;
     height: 100vh;
     padding: 0 20px 20px;
-    background: #0f172a;
+    background: var(--bg);
   }
 
   .folder-path {
@@ -182,27 +183,27 @@
     gap: 8px;
     padding: 6px 0 12px;
     font-size: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid var(--border);
     margin-bottom: 12px;
   }
 
   .path-label {
-    color: rgba(255, 255, 255, 0.4);
+    color: var(--text-tertiary);
     font-weight: 500;
     flex-shrink: 0;
   }
 
   .path-value {
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--text-secondary);
     word-break: break-all;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
   }
 
   .content {
     flex: 1;
-    background: #111827;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -214,7 +215,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: rgba(255, 255, 255, 0.6);
+    color: var(--text-secondary);
     gap: 16px;
   }
 
@@ -225,8 +226,8 @@
   .spinner {
     width: 36px;
     height: 36px;
-    border: 2px solid rgba(255, 255, 255, 0.08);
-    border-top-color: #3b82f6;
+    border: 2px solid var(--surface-raised);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }
@@ -241,7 +242,7 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-faint);
     padding: 32px;
     gap: 12px;
   }

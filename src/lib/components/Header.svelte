@@ -63,13 +63,13 @@
   }
 
   .brand-icon {
-    color: #3b82f6;
+    color: var(--accent);
   }
 
   .title {
     font-size: 26px;
     font-weight: 700;
-    color: #f8fafc;
+    color: var(--text);
     letter-spacing: -0.3px;
   }
 

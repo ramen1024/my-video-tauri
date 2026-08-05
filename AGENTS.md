@@ -22,6 +22,7 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - `src/lib/types/` — TypeScript interfaces (VideoFile, ShareServerInfo, PasswordStatus)
 - `src/lib/services/` — Tauri IPC wrappers (video.ts, share.ts, password.ts). All `invoke()` calls go through here.
 - `src/lib/utils/` — format.ts (file size), qrcode.ts (dynamic import)
+- `src/lib/styles/` — theme.css (design tokens as CSS variables), buttons.css
 - `src/lib/components/` — Svelte 5 components using runes (`$state`, `$derived`, `$effect`, `$props`)
 - `src/routes/+page.svelte` — main page, orchestrates components only
 - `src/routes/+layout.js` — disables SSR (required for Tauri)
@@ -65,6 +66,7 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - Vite dev server fixed on port 1420; HMR on 1421
 - `qrcode-generator` is dynamically imported — don't add it as a top-level import
 - `html_template.html` and `login_template.html` are embedded via `include_str!` in server/handler.rs — paths are relative to that file
+- UI 颜色一律使用 `src/lib/styles/theme.css` 的 CSS 变量（命名与网页端模板的 `:root` 对齐），**禁止硬编码颜色值**；新增组件直接从令牌取色
 - `capabilities/default.json` uses minimal permissions (`core:default`, `opener:default`, `dialog:default`) — no filesystem permissions
 
 ## Windows-specific

@@ -101,9 +101,9 @@
     align-items: stretch;
     gap: 12px;
     padding: 14px;
-    background: #0f172a;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
   }
 
   .pin-display {
@@ -115,9 +115,9 @@
   .pin-box {
     width: 42px;
     height: 52px;
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    background: var(--surface-hover);
+    border: 1.5px solid var(--border-strong);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -128,19 +128,19 @@
   }
 
   .pin-box.has-digit {
-    color: #60a5fa;
-    border-color: rgba(59, 130, 246, 0.35);
-    background: rgba(59, 130, 246, 0.08);
+    color: var(--accent-light);
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
   }
 
   .pin-box.error {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--danger-strong);
+    background: var(--danger-soft);
     animation: shake 0.35s ease;
   }
 
   .pin-box.error .pin-dot {
-    background: #ef4444;
+    background: var(--danger-strong);
   }
 
   @keyframes shake {
@@ -153,32 +153,32 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #60a5fa;
+    background: var(--accent-light);
     display: block;
   }
 
   .pin-banner {
     text-align: center;
     padding: 6px 12px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     font-size: 12px;
     font-weight: 500;
   }
 
   .pin-banner.error {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
-    color: #fca5a5;
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-border);
+    color: var(--danger);
   }
 
   .pin-banner.success {
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    color: #34d399;
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    color: var(--success-light);
   }
 
   .pin-banner.info {
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-tertiary);
   }
 
   .numpad {
@@ -196,10 +196,10 @@
 
   .num-key {
     height: 46px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-hover);
+    color: var(--text-strong);
     font-size: 18px;
     font-weight: 500;
     cursor: pointer;
@@ -208,27 +208,27 @@
   }
 
   .num-key:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(59, 130, 246, 0.25);
+    background: var(--surface-raised);
+    border-color: var(--accent-border);
   }
 
   .num-key:active {
-    background: rgba(59, 130, 246, 0.15);
+    background: var(--accent-soft);
   }
 
   .num-key.action {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--text-tertiary);
   }
 
   .num-key.delete {
     font-size: 16px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--text-secondary);
   }
 
   .num-key.delete:hover {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.2);
-    color: #fca5a5;
+    background: var(--danger-soft);
+    border-color: var(--danger-border);
+    color: var(--danger);
   }
 </style>

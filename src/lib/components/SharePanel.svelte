@@ -9,10 +9,9 @@
 
   interface Props {
     shareInfo: ShareServerInfo;
-    onStop: () => void;
   }
 
-  let { shareInfo, onStop }: Props = $props();
+  let { shareInfo }: Props = $props();
 
   let selectedIp = $state("");
   let qrCodeDataUrl = $state("");
@@ -91,7 +90,6 @@
   </div>
   <div class="share-footer">
     <span class="firewall-hint">其他设备无法访问时，请在 Windows 防火墙中允许端口 {shareInfo.port}</span>
-    <button class="btn btn-danger" onclick={onStop}>停止共享</button>
   </div>
 </div>
 
@@ -101,9 +99,9 @@
     flex-direction: column;
     gap: 12px;
     padding: 14px;
-    background: #111827;
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     margin-bottom: 12px;
   }
 
@@ -116,9 +114,9 @@
   .qr-code {
     width: 96px;
     height: 96px;
-    background: #ffffff;
+    background: var(--white);
     padding: 6px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     flex-shrink: 0;
   }
 
@@ -136,14 +134,14 @@
     gap: 6px;
     font-size: 13px;
     font-weight: 600;
-    color: #10b981;
+    color: var(--success);
   }
 
   .status-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #10b981;
+    background: var(--success);
   }
 
   .ip-list {
@@ -154,56 +152,55 @@
 
   .ip-btn {
     padding: 5px 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-hover);
+    color: var(--text-secondary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
   }
 
   .ip-btn:hover {
-    border-color: rgba(59, 130, 246, 0.3);
-    color: rgba(255, 255, 255, 0.85);
+    border-color: var(--accent-border);
+    color: var(--text-strong);
   }
 
   .ip-btn.selected {
-    border-color: rgba(59, 130, 246, 0.5);
-    background: rgba(59, 130, 246, 0.12);
-    color: #60a5fa;
+    border-color: var(--accent-border-strong);
+    background: var(--accent-soft);
+    color: var(--accent-light);
   }
 
   .selected-link {
-    color: #60a5fa;
+    color: var(--accent-light);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     background: none;
     border: none;
     padding: 0;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
     text-align: left;
     transition: color 0.15s ease;
   }
 
   .selected-link:hover {
-    color: #93c5fd;
+    color: var(--accent-light-hover);
   }
 
   .share-footer {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     gap: 12px;
     padding-top: 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid var(--border);
   }
 
   .firewall-hint {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.45);
+    color: var(--text-tertiary);
   }
 
   @media (max-width: 640px) {

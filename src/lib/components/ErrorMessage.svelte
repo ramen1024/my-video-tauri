@@ -32,7 +32,9 @@
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
     <span>{message}</span>
     {#if onDismiss}
-      <button class="dismiss-btn" onclick={onDismiss} aria-label="关闭提示">&times;</button>
+      <button class="dismiss-btn" onclick={onDismiss} aria-label="关闭提示">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     {/if}
   </div>
 {/if}
@@ -43,10 +45,10 @@
     align-items: center;
     gap: 10px;
     padding: 10px 14px;
-    background: rgba(239, 68, 68, 0.1);
-    color: #fca5a5;
-    border: 1px solid rgba(239, 68, 68, 0.18);
-    border-radius: 10px;
+    background: var(--danger-soft);
+    color: var(--danger);
+    border: 1px solid var(--danger-border);
+    border-radius: var(--radius-md);
     margin-bottom: 12px;
     font-size: 13px;
     font-weight: 500;
@@ -58,9 +60,10 @@
     border: none;
     color: inherit;
     cursor: pointer;
-    font-size: 20px;
-    line-height: 1;
-    padding: 0 2px;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     opacity: 0.7;
     transition: opacity 0.15s ease;
   }

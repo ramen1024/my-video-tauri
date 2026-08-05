@@ -54,7 +54,7 @@
   .player-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: var(--overlay);
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -66,11 +66,11 @@
   .player-container {
     width: 100%;
     max-width: 1200px;
-    background: #0f172a;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--shadow-lg);
   }
 
   .player-header {
@@ -78,14 +78,14 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    background: #111827;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
   }
 
   .player-title {
     font-size: 14px;
     font-weight: 500;
-    color: #f8fafc;
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -94,27 +94,27 @@
   }
 
   .close-btn {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.7);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
     cursor: pointer;
     padding: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background-color 0.15s ease, color 0.15s ease;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
   }
 
   .close-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
-    color: #fca5a5;
+    background: var(--danger-hover);
+    color: var(--danger);
   }
 
   .video-player {
     width: 100%;
     display: block;
     max-height: calc(100vh - 140px);
-    background: #000000;
+    background: var(--black);
   }
 </style>
