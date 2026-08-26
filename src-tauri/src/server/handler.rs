@@ -19,6 +19,17 @@ use crate::AppState;
 /// 登录页面 HTML 模板（编译时嵌入）
 static LOGIN_PAGE: &str = include_str!("../login_template.html");
 
+/// 按名称读取请求头值，字段名大小写不敏感（HTTP 头名规范要求）
+///
+/// 找不到时返回 `None`；调用方需要默认空串时可自行 `unwrap_or("")`。
+fn request_header<'a>(request: &'a tiny_http::Request, name: &'static str) -> Option<&'a str> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv(name))
+        .map(|h| h.value.as_str())
+}
+
 /// HTTP 请求主处理函数
 ///
 /// 根据请求 URL 和方法路由到对应的处理逻辑。
@@ -31,11 +42,8 @@ pub fn handle_request(
 ) -> tiny_http::Response<Box<dyn Read + Send>> {
     // Host 头校验，防止 DNS rebinding 攻击：
     // 仅允许本机 IP（含回环地址）作为 Host，恶意网页无法通过域名解析指向本机后"同源"读取 /videos。
-    let host_allowed = request
-        .headers()
-        .iter()
-        .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case("Host"))
-        .map(|h| h.value.as_str().split(':').next().unwrap_or(""))
+    let host_allowed = request_header(request, "Host")
+        .map(|h| h.split(':').next().unwrap_or(""))
         .map(|host| {
             ips.iter().any(|ip| ip == host)
                 || host == "127.0.0.1"
@@ -55,12 +63,7 @@ pub fn handle_request(
     }
 
     if app_state.password().is_enabled() {
-        let cookie_header = request
-            .headers()
-            .iter()
-            .find(|h| h.field.as_str() == "Cookie")
-            .map(|h| h.value.as_str())
-            .unwrap_or("");
+        let cookie_header = request_header(request, "Cookie").unwrap_or("");
 
         if !app_state.password().check_web_auth(cookie_header) {
             if url == "/login" || url == "/login.html" {
@@ -90,11 +93,7 @@ pub fn handle_request(
         "/videos" => {
             let etag = format!("\"{}\"", app_state.videos_etag());
 
-            let if_none_match = request
-                .headers()
-                .iter()
-                .find(|h| h.field.as_str() == "If-None-Match")
-                .map(|h| h.value.as_str());
+            let if_none_match = request_header(request, "If-None-Match");
 
             if if_none_match == Some(etag.as_str()) {
                 let mut resp = super::response::text_response(304, "");
@@ -187,11 +186,7 @@ pub fn handle_request(
             }
         }
         _ if url.starts_with("/video/") => {
-            let range_header = request
-                .headers()
-                .iter()
-                .find(|h| h.field.as_str() == "Range")
-                .map(|h| h.value.as_str());
+            let range_header = request_header(request, "Range");
             super::video_serve::handle_video_request(&url, range_header, app_state)
         }
         _ => super::response::text_response(404, "Not found"),
