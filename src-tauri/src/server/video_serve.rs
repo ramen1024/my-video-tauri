@@ -123,17 +123,12 @@ pub fn handle_video_request(
         return super::response::text_response(500, "Seek error");
     }
 
-    let content_type = match video_path.extension().and_then(|e| e.to_str()) {
-        Some("mp4" | "m4v") => "video/mp4",
-        Some("webm") => "video/webm",
-        Some("mkv") => "video/x-matroska",
-        Some("avi") => "video/x-msvideo",
-        Some("mov") => "video/quicktime",
-        Some("wmv") => "video/x-ms-wmv",
-        Some("flv") => "video/x-flv",
-        Some("mpg" | "mpeg") => "video/mpeg",
-        _ => "application/octet-stream",
-    };
+    let content_type = crate::constants::video_content_type(
+        video_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or(""),
+    );
 
     let limited_reader = file.take(content_length);
     let boxed_reader: Box<dyn Read + Send> = Box::new(limited_reader);

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tauri::State;
 use walkdir::WalkDir;
 
-use crate::constants::{MIN_VIDEO_FILE_SIZE_BYTES, VIDEO_SUPPORTED_EXTENSIONS};
+use crate::constants::{is_supported_video_extension, MIN_VIDEO_FILE_SIZE_BYTES};
 use crate::error::AppError;
 use crate::models::VideoFile;
 use crate::utils::{allow_shared_folder_asset_scope, format_system_time, is_root_directory};
@@ -122,9 +122,9 @@ fn entry_to_scanned_file(entry: &walkdir::DirEntry, base_path: &Path) -> Option<
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
-    match ext.as_deref() {
-        Some(e) if VIDEO_SUPPORTED_EXTENSIONS.contains(&e) => {}
-        _ => return None,
+    let is_supported = ext.as_deref().is_some_and(is_supported_video_extension);
+    if !is_supported {
+        return None;
     }
 
     let metadata = entry
@@ -292,9 +292,8 @@ fn validate_play_video(file_path: &str, shared_folder: &str) -> Result<(), AppEr
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase());
 
-    match ext {
-        Some(ref e) if VIDEO_SUPPORTED_EXTENSIONS.contains(&e.as_str()) => {}
-        _ => return Err(AppError::InvalidPath("不允许打开非视频文件".to_string())),
+    if !ext.as_deref().is_some_and(is_supported_video_extension) {
+        return Err(AppError::InvalidPath("不允许打开非视频文件".to_string()));
     }
 
     let canonical_path = path
