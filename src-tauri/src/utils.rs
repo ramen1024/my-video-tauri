@@ -197,24 +197,8 @@ pub fn sanitize_video_path(base: &Path, requested: &str) -> Option<std::path::Pa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{make_temp_dir, sample_video};
     use std::fs;
-
-    fn make_temp_dir(prefix: &str) -> std::path::PathBuf {
-        let mut name = prefix.to_string();
-        name.push_str("_");
-        name.push_str(&std::process::id().to_string());
-        name.push_str("_");
-        name.push_str(
-            &std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-                .to_string(),
-        );
-        let path = std::env::temp_dir().join(name);
-        fs::create_dir_all(&path).expect("创建临时目录失败");
-        path
-    }
 
     #[test]
     fn test_sanitize_video_path_traversal() {
@@ -256,21 +240,6 @@ mod tests {
             !is_root_directory(Path::new("/home")),
             "普通 Unix 子目录不应是根目录"
         );
-    }
-
-    fn sample_video(relative_path: &str, size: u64, modified: Option<&str>) -> VideoFile {
-        VideoFile {
-            name: relative_path
-                .rsplit(['/', '\\'])
-                .next()
-                .unwrap_or(relative_path)
-                .to_string(),
-            path: format!("C:\\videos\\{}", relative_path),
-            relative_path: relative_path.to_string(),
-            size,
-            modified: modified.map(|m| m.to_string()),
-            extension: "mp4".to_string(),
-        }
     }
 
     #[test]

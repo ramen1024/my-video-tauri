@@ -22,6 +22,9 @@ mod server;
 mod utils;
 mod video_cache;
 
+#[cfg(test)]
+mod test_utils;
+
 pub use error::AppError;
 pub use models::{ShareServerInfo, VideoFile};
 pub use password::PasswordStatus;

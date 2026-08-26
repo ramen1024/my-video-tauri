@@ -549,19 +549,11 @@ fn set_secure_file_permissions(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::make_temp_dir;
 
     fn test_state() -> PasswordState {
         let state = PasswordState::new();
-        let mut dir = std::env::temp_dir();
-        dir.push(format!(
-            "video_scanner_pwd_test_{}_{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        state.set_config_dir(dir);
+        state.set_config_dir(make_temp_dir("video_scanner_pwd_test"));
         state
     }
 

@@ -97,6 +97,20 @@ impl ScannedFile {
     }
 }
 
+/// 与 [`ScannedFile::into_video_file`] 互逆的字段映射，供缓存校验测试构造样例
+impl From<VideoFile> for ScannedFile {
+    fn from(v: VideoFile) -> Self {
+        Self {
+            name: v.name,
+            path: v.path,
+            relative_path: v.relative_path,
+            size: v.size,
+            modified: v.modified,
+            extension: v.extension,
+        }
+    }
+}
+
 /// 将遍历条目转换为 ScannedFile，应用扩展名与最小大小过滤
 fn entry_to_scanned_file(entry: &walkdir::DirEntry, base_path: &Path) -> Option<ScannedFile> {
     if !entry.file_type().is_file() {
@@ -312,41 +326,9 @@ pub fn play_video(file_path: String, state: State<'_, AppState>) -> Result<(), A
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{create_test_video, make_temp_dir, sample_video};
     use crate::AppState;
     use std::fs;
-    use std::io::Write;
-    use std::path::PathBuf;
-
-    fn make_temp_dir(prefix: &str) -> PathBuf {
-        let mut name = prefix.to_string();
-        name.push_str("_");
-        name.push_str(&std::process::id().to_string());
-        name.push_str("_");
-        name.push_str(
-            &std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-                .to_string(),
-        );
-        let path = std::env::temp_dir().join(name);
-        fs::create_dir_all(&path).expect("创建临时目录失败");
-        path
-    }
-
-    fn create_test_video(path: &Path, size: u64) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("创建父目录失败");
-        }
-        let mut file = fs::File::create(path).expect("创建测试视频文件失败");
-        let buf = vec![0u8; 8192];
-        let mut remaining = size;
-        while remaining > 0 {
-            let chunk = std::cmp::min(remaining, buf.len() as u64) as usize;
-            file.write_all(&buf[..chunk]).expect("写入测试视频数据失败");
-            remaining -= chunk as u64;
-        }
-    }
 
     #[test]
     fn test_validate_play_video_rejects_empty_shared_folder() {
@@ -434,41 +416,15 @@ mod tests {
         let _ = fs::remove_dir_all(&target_dir);
     }
 
-    fn sample_cached_video(relative_path: &str, size: u64, modified: Option<&str>) -> VideoFile {
-        VideoFile {
-            name: relative_path
-                .rsplit(['/', '\\'])
-                .next()
-                .unwrap_or(relative_path)
-                .to_string(),
-            path: format!("C:\\videos\\{}", relative_path),
-            relative_path: relative_path.to_string(),
-            size,
-            modified: modified.map(|m| m.to_string()),
-            extension: "mp4".to_string(),
-        }
-    }
-
     fn sample_scanned(relative_path: &str, size: u64, modified: Option<&str>) -> ScannedFile {
-        ScannedFile {
-            name: relative_path
-                .rsplit(['/', '\\'])
-                .next()
-                .unwrap_or(relative_path)
-                .to_string(),
-            path: format!("C:\\videos\\{}", relative_path),
-            relative_path: relative_path.to_string(),
-            size,
-            modified: modified.map(|m| m.to_string()),
-            extension: "mp4".to_string(),
-        }
+        ScannedFile::from(sample_video(relative_path, size, modified))
     }
 
     #[test]
     fn test_cache_matches_identical_lists() {
         let cached = vec![
-            sample_cached_video("a.mp4", 100, Some("2024-01-01 10:00:00")),
-            sample_cached_video("b.mp4", 200, None),
+            sample_video("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_video("b.mp4", 200, None),
         ];
         let scanned = vec![
             sample_scanned("a.mp4", 100, Some("2024-01-01 10:00:00")),
@@ -480,8 +436,8 @@ mod tests {
     #[test]
     fn test_cache_matches_rejects_changes() {
         let cached = vec![
-            sample_cached_video("a.mp4", 100, Some("2024-01-01 10:00:00")),
-            sample_cached_video("b.mp4", 200, None),
+            sample_video("a.mp4", 100, Some("2024-01-01 10:00:00")),
+            sample_video("b.mp4", 200, None),
         ];
 
         // 大小变化

@@ -110,36 +110,12 @@ impl VideoCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::VideoFile;
+    use crate::test_utils::{make_temp_dir, sample_video};
     use std::fs;
-
-    fn make_temp_dir(prefix: &str) -> PathBuf {
-        let mut name = prefix.to_string();
-        name.push_str("_");
-        name.push_str(&std::process::id().to_string());
-        name.push_str("_");
-        name.push_str(
-            &std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-                .to_string(),
-        );
-        let path = std::env::temp_dir().join(name);
-        fs::create_dir_all(&path).expect("创建临时目录失败");
-        path
-    }
 
     fn sample_entry() -> VideoCacheEntry {
         VideoCacheEntry {
-            videos: vec![VideoFile {
-                name: "test.mp4".to_string(),
-                path: "/tmp/test.mp4".to_string(),
-                relative_path: "test.mp4".to_string(),
-                size: 1234,
-                modified: None,
-                extension: "mp4".to_string(),
-            }],
+            videos: vec![sample_video("test.mp4", 1234, None)],
             cached_at: 0,
         }
     }
