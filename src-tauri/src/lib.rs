@@ -220,9 +220,7 @@ impl AppState {
             ServerState::Running | ServerState::Starting => {
                 Err(AppError::ServerAlreadyRunning("服务器已在运行".to_string()))
             }
-            ServerState::Stopping => {
-                Err(AppError::Other("服务器正在停止中，请稍后".to_string()))
-            }
+            ServerState::Stopping => Err(AppError::Other("服务器正在停止中，请稍后".to_string())),
             ServerState::Stopped => {
                 *state = ServerState::Starting;
                 Ok(())
@@ -231,11 +229,7 @@ impl AppState {
     }
 
     /// 将服务器设置为运行状态，并保存服务器实例和 worker 线程
-    pub fn set_server_running(
-        &self,
-        server: Arc<tiny_http::Server>,
-        threads: Vec<JoinHandle<()>>,
-    ) {
+    pub fn set_server_running(&self, server: Arc<tiny_http::Server>, threads: Vec<JoinHandle<()>>) {
         let mut handle = self.server_handle.write();
         let mut worker_threads = self.server_threads.write();
         let mut state = self.server_state.lock();
@@ -251,9 +245,7 @@ impl AppState {
             ServerState::Stopped | ServerState::Stopping => {
                 Err(AppError::ServerNotRunning("服务器未运行".to_string()))
             }
-            ServerState::Starting => {
-                Err(AppError::Other("服务器正在启动中，请稍后".to_string()))
-            }
+            ServerState::Starting => Err(AppError::Other("服务器正在启动中，请稍后".to_string())),
             ServerState::Running => {
                 *state = ServerState::Stopping;
                 let worker_count = self.server_threads.read().len();

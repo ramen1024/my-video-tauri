@@ -19,9 +19,9 @@ fn build_response(
         status_code.into(),
         vec![
             tiny_http::Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap(),
-            tiny_http::Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes()).unwrap(),
-            tiny_http::Header::from_bytes(&b"X-Content-Type-Options"[..], &b"nosniff"[..])
+            tiny_http::Header::from_bytes(&b"Content-Length"[..], len.to_string().as_bytes())
                 .unwrap(),
+            tiny_http::Header::from_bytes(&b"X-Content-Type-Options"[..], &b"nosniff"[..]).unwrap(),
             tiny_http::Header::from_bytes(&b"Referrer-Policy"[..], &b"no-referrer"[..]).unwrap(),
             // 禁止页面被嵌入 iframe，防止点击劫持
             tiny_http::Header::from_bytes(&b"X-Frame-Options"[..], &b"DENY"[..]).unwrap(),
@@ -74,8 +74,6 @@ pub fn redirect_response(location: &str) -> tiny_http::Response<Box<dyn Read + S
         location
     );
     let mut resp = build_response(302, "text/html; charset=utf-8", body.as_bytes().to_vec());
-    resp.add_header(
-        tiny_http::Header::from_bytes(&b"Location"[..], location.as_bytes()).unwrap(),
-    );
+    resp.add_header(tiny_http::Header::from_bytes(&b"Location"[..], location.as_bytes()).unwrap());
     resp
 }

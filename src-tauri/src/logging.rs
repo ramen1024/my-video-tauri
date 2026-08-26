@@ -59,10 +59,8 @@ impl Log for DualLogger {
 
 /// 初始化日志系统（在 main 中调用，替代 env_logger 直接初始化）
 pub fn init() {
-    let console = env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info"),
-    )
-    .build();
+    let console =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
     log::set_boxed_logger(Box::new(DualLogger { console })).expect("设置日志器失败");
     log::set_max_level(LevelFilter::Info);
 }
@@ -95,7 +93,11 @@ fn open_rotated_log(path: &Path) -> Option<File> {
         .append(true)
         .open(path)
         .map_err(|e| {
-            log::warn!("[日志] 打开日志文件失败，仅输出到控制台: {} 路径: {:?}", e, path);
+            log::warn!(
+                "[日志] 打开日志文件失败，仅输出到控制台: {} 路径: {:?}",
+                e,
+                path
+            );
         })
         .ok()
 }

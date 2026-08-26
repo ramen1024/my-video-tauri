@@ -74,7 +74,12 @@ pub fn handle_request(
         "/" | "/index.html" => {
             let addresses: String = ips
                 .iter()
-                .map(|ip| format!(r#"<span class="address-item">http://{}:{}</span>"#, ip, port))
+                .map(|ip| {
+                    format!(
+                        r#"<span class="address-item">http://{}:{}</span>"#,
+                        ip, port
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(" | ");
 
@@ -106,9 +111,7 @@ pub fn handle_request(
             let videos = app_state.shared_videos();
             let json = serde_json::to_string(&*videos).unwrap_or_else(|_| "[]".to_string());
             let mut resp = super::response::json_response(200, &json);
-            resp.add_header(
-                tiny_http::Header::from_bytes(&b"ETag"[..], etag.as_bytes()).unwrap(),
-            );
+            resp.add_header(tiny_http::Header::from_bytes(&b"ETag"[..], etag.as_bytes()).unwrap());
             resp.add_header(
                 tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"must-revalidate"[..])
                     .unwrap(),
@@ -133,8 +136,8 @@ pub fn handle_request(
             if folder_path.is_empty() {
                 app_state.finish_refresh();
                 app_state.finish_refresh_cooldown();
-                let json =
-                    serde_json::json!({"success": false, "message": "未设置共享文件夹"}).to_string();
+                let json = serde_json::json!({"success": false, "message": "未设置共享文件夹"})
+                    .to_string();
                 return super::response::json_response(400, &json);
             }
 
@@ -149,14 +152,10 @@ pub fn handle_request(
                         &scan_app_state,
                         false,
                     ) {
-                        Ok(_) => {
-                            serde_json::json!({"success": true, "message": "视频列表已刷新"})
-                                .to_string()
-                        }
-                        Err(e) => {
-                            serde_json::json!({"success": false, "message": e.to_string()})
-                                .to_string()
-                        }
+                        Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"})
+                            .to_string(),
+                        Err(e) => serde_json::json!({"success": false, "message": e.to_string()})
+                            .to_string(),
                     }
                 }));
                 let msg = result.unwrap_or_else(|_| {

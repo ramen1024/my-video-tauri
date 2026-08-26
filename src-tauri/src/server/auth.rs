@@ -44,13 +44,19 @@ pub fn handle_auth(
         );
     }
 
-    let ip = request.remote_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+    let ip = request
+        .remote_addr()
+        .map(|a| a.ip().to_string())
+        .unwrap_or_default();
 
     match serde_json::from_str::<serde_json::Value>(&body) {
         Ok(data) => {
             let pwd = data["password"].as_str().unwrap_or("");
             if pwd.is_empty() {
-                return super::response::json_response(400, r#"{"success": false, "message": "请输入密码"}"#);
+                return super::response::json_response(
+                    400,
+                    r#"{"success": false, "message": "请输入密码"}"#,
+                );
             }
 
             match password_state.authenticate_web_request(&ip, pwd) {
@@ -64,10 +70,8 @@ pub fn handle_auth(
                         if COOKIE_SECURE { "; Secure" } else { "" }
                     );
                     resp.add_header(
-                        tiny_http::Header::from_bytes(
-                            &b"Set-Cookie"[..],
-                            cookie_value.as_bytes(),
-                        ).unwrap(),
+                        tiny_http::Header::from_bytes(&b"Set-Cookie"[..], cookie_value.as_bytes())
+                            .unwrap(),
                     );
                     resp
                 }
@@ -77,8 +81,9 @@ pub fn handle_auth(
                 }
             }
         }
-        Err(_) => {
-            super::response::json_response(400, r#"{"success": false, "message": "无效的请求数据"}"#)
-        }
+        Err(_) => super::response::json_response(
+            400,
+            r#"{"success": false, "message": "无效的请求数据"}"#,
+        ),
     }
 }

@@ -678,6 +678,15 @@
             document.body.style.overflow = '';
         }
 
+        function handleVideoError() {
+            const overlay = document.getElementById('playerOverlay');
+            const video = document.getElementById('videoPlayer');
+            // 关闭播放器清空 src 也可能异步触发 error，仅在播放器仍可见时才视为播放失败
+            if (overlay.style.display === 'flex' && video.error) {
+                showToast('该文件的编码格式浏览器无法播放');
+            }
+        }
+
         function escapeHtml(str) {
             const div = document.createElement('div');
             div.textContent = str;
@@ -850,6 +859,7 @@
 
         document.getElementById('videoList').addEventListener('scroll', scheduleUpdateVisibleItems);
         window.addEventListener('resize', scheduleUpdateVisibleItems);
+        document.getElementById('videoPlayer').addEventListener('error', handleVideoError);
 
         let pollTimer = null;
         function startPolling() {

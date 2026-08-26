@@ -34,14 +34,13 @@ pub async fn scan_videos(
     let app_state = state.inner().clone();
     let scan_folder = folder_path.clone();
 
-    let videos = tauri::async_runtime::spawn_blocking(
-        move || -> Result<Arc<Vec<VideoFile>>, AppError> {
+    let videos =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Arc<Vec<VideoFile>>, AppError> {
             scan_videos_sync(scan_folder, &app_state, use_cache)?;
             Ok(app_state.shared_videos())
-        },
-    )
-    .await
-    .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))??;
+        })
+        .await
+        .map_err(|e| AppError::Other(format!("扫描任务执行失败: {}", e)))??;
 
     // 桌面端通过 asset 协议播放视频，扫描成功后放行该文件夹
     allow_shared_folder_asset_scope(&app, &folder_path);
@@ -504,7 +503,10 @@ mod tests {
             sample_scanned("a.mp4", 100, Some("2024-06-01 10:00:00")),
             sample_scanned("b.mp4", 200, None),
         ];
-        assert!(!cache_matches(&cached, &time_changed), "修改时间变化应校验失败");
+        assert!(
+            !cache_matches(&cached, &time_changed),
+            "修改时间变化应校验失败"
+        );
 
         // 多一个文件
         let extra = vec![
@@ -528,7 +530,11 @@ mod tests {
         let path = scan_dir.to_string_lossy().to_string();
 
         scan_videos_sync(path.clone(), &app_state, true).expect("首次扫描应成功");
-        assert_eq!(app_state.shared_videos().len(), 1, "首次扫描应发现 1 个视频");
+        assert_eq!(
+            app_state.shared_videos().len(),
+            1,
+            "首次扫描应发现 1 个视频"
+        );
 
         // 在子目录中新增视频（顶层目录 mtime 不会变化）
         create_test_video(&sub.join("two.mp4"), MIN_VIDEO_FILE_SIZE_BYTES);

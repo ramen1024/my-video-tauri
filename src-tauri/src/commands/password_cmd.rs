@@ -18,10 +18,7 @@ pub fn get_password_status(state: State<'_, AppState>) -> PasswordStatus {
 
 /// 启用或禁用密码保护（启用前必须已设置密码）
 #[tauri::command]
-pub fn set_password_enabled(
-    enabled: bool,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub fn set_password_enabled(enabled: bool, state: State<'_, AppState>) -> Result<(), AppError> {
     if enabled && !state.password().has_password() {
         return Err(AppError::PasswordError(
             "请先设置密码再启用密码保护".to_string(),

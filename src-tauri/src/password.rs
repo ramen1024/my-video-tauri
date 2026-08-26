@@ -108,8 +108,7 @@ impl PasswordState {
         if let Some(dir) = dir_guard.as_ref() {
             let path = dir.join("password_config.json");
             if !dir.exists() {
-                std::fs::create_dir_all(dir)
-                    .map_err(|e| format!("创建配置目录失败: {}", e))?;
+                std::fs::create_dir_all(dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
             }
             return Ok(path);
         }
@@ -131,7 +130,8 @@ impl PasswordState {
                             Err(e) => {
                                 log::error!(
                                     "[密码配置] JSON 解析失败（文件可能损坏）: {} 路径: {:?}",
-                                    e, path
+                                    e,
+                                    path
                                 );
                                 PasswordConfig::default()
                             }
@@ -401,7 +401,9 @@ impl PasswordState {
 /// 启动后台线程，定期清理过期 session
 pub fn start_cleanup_thread(state: Arc<PasswordState>) {
     std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_secs(SESSION_CLEANUP_INTERVAL_SECS));
+        std::thread::sleep(std::time::Duration::from_secs(
+            SESSION_CLEANUP_INTERVAL_SECS,
+        ));
         state.cleanup_expired_sessions();
     });
 }
@@ -447,8 +449,7 @@ pub fn hash_password_argon2id(password: &str, pepper: &str) -> Result<String, St
 
     let mut salt_bytes = [0u8; 16];
     rand::rng().fill_bytes(&mut salt_bytes);
-    let salt = SaltString::encode_b64(&salt_bytes)
-        .map_err(|e| format!("编码 salt 失败: {}", e))?;
+    let salt = SaltString::encode_b64(&salt_bytes).map_err(|e| format!("编码 salt 失败: {}", e))?;
 
     let password_with_pepper = format!("{}{}", password, pepper);
     argon2
@@ -464,8 +465,8 @@ fn verify_password_with_pepper(
     pepper: &str,
 ) -> Result<bool, String> {
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default());
-    let parsed_hash = PasswordHash::new(hash_with_salt)
-        .map_err(|e| format!("解析密码哈希失败: {}", e))?;
+    let parsed_hash =
+        PasswordHash::new(hash_with_salt).map_err(|e| format!("解析密码哈希失败: {}", e))?;
 
     let password_with_pepper = format!("{}{}", password, pepper);
     match argon2.verify_password(password_with_pepper.as_bytes(), &parsed_hash) {
@@ -577,16 +578,16 @@ mod tests {
     fn test_verify_password_argon2id_correct() {
         let password = "5678";
         let hash = hash_password_argon2id(password, "test-pepper").expect("哈希应成功");
-        let result = verify_password_with_pepper(password, &hash, "test-pepper")
-            .expect("验证不应报错");
+        let result =
+            verify_password_with_pepper(password, &hash, "test-pepper").expect("验证不应报错");
         assert!(result, "正确密码应验证通过");
     }
 
     #[test]
     fn test_verify_password_argon2id_wrong() {
         let hash = hash_password_argon2id("0000", "test-pepper").expect("哈希应成功");
-        let result = verify_password_with_pepper("9999", &hash, "test-pepper")
-            .expect("验证不应报错");
+        let result =
+            verify_password_with_pepper("9999", &hash, "test-pepper").expect("验证不应报错");
         assert!(!result, "错误密码应验证失败");
     }
 
@@ -616,10 +617,7 @@ mod tests {
             state.set_password("12345").is_err(),
             "多于 4 位的密码应校验失败"
         );
-        assert!(
-            state.set_password("abcd").is_err(),
-            "非数字密码应校验失败"
-        );
+        assert!(state.set_password("abcd").is_err(), "非数字密码应校验失败");
         assert!(
             state.set_password("12a4").is_err(),
             "包含非数字字符的密码应校验失败"
@@ -631,8 +629,7 @@ mod tests {
         let state = test_state();
 
         // 模拟旧版配置：使用固定 LEGACY_PEPPER 生成哈希
-        let legacy_hash =
-            hash_password_argon2id("1234", LEGACY_PEPPER).expect("哈希应成功");
+        let legacy_hash = hash_password_argon2id("1234", LEGACY_PEPPER).expect("哈希应成功");
         // 模拟生产环境：当前 pepper 已切换为随机值
         *state.pepper.write() = Some("a".repeat(64));
         *state.hash.write() = Some(legacy_hash);
@@ -671,9 +668,8 @@ mod tests {
     #[test]
     fn test_rate_limit_locks_after_max_attempts() {
         let state = test_state();
-        *state.hash.write() = Some(
-            hash_password_argon2id("1234", &state.current_pepper()).expect("哈希应成功"),
-        );
+        *state.hash.write() =
+            Some(hash_password_argon2id("1234", &state.current_pepper()).expect("哈希应成功"));
 
         // 连续错误密码触发锁定
         for _ in 0..MAX_FAILED_ATTEMPTS {

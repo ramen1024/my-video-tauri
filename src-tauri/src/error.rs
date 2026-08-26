@@ -71,15 +71,18 @@ mod tests {
 
     #[test]
     fn test_scan_cancelled_serializes_with_message() {
-        let json = serde_json::to_string(&AppError::ScanCancelled("扫描已取消".to_string()))
-            .unwrap();
+        let json =
+            serde_json::to_string(&AppError::ScanCancelled("扫描已取消".to_string())).unwrap();
         assert_eq!(json, r#"{"type":"ScanCancelled","message":"扫描已取消"}"#);
     }
 
     #[test]
     fn test_server_not_running_serializes_with_message() {
-        let json = serde_json::to_string(&AppError::ServerNotRunning("服务器未运行".to_string()))
-            .unwrap();
-        assert_eq!(json, r#"{"type":"ServerNotRunning","message":"服务器未运行"}"#);
+        let json =
+            serde_json::to_string(&AppError::ServerNotRunning("服务器未运行".to_string())).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"ServerNotRunning","message":"服务器未运行"}"#
+        );
     }
 }

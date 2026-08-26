@@ -9,9 +9,7 @@ use std::thread::JoinHandle;
 
 use tauri::State;
 
-use crate::constants::{
-    MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS,
-};
+use crate::constants::{MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS};
 use crate::error::AppError;
 use crate::models::ShareServerInfo;
 use crate::server;

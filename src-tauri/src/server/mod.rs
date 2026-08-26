@@ -72,8 +72,7 @@ pub fn start_http_server(
     let addr = format!("0.0.0.0:{}", port);
     let ips = ips.to_vec();
 
-    let server = tiny_http::Server::http(&addr)
-        .map_err(|e| format!("启动服务器失败: {}", e))?;
+    let server = tiny_http::Server::http(&addr).map_err(|e| format!("启动服务器失败: {}", e))?;
 
     let server = Arc::new(server);
 

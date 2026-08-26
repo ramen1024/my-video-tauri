@@ -67,21 +67,17 @@ impl VideoCache {
             return Ok(());
         }
 
-        self.entries = serde_json::from_str(&content)
-            .map_err(|e| format!("解析缓存文件失败: {}", e))?;
+        self.entries =
+            serde_json::from_str(&content).map_err(|e| format!("解析缓存文件失败: {}", e))?;
 
-        log::info!(
-            "[视频缓存] 已加载 {} 条缓存记录",
-            self.entries.len()
-        );
+        log::info!("[视频缓存] 已加载 {} 条缓存记录", self.entries.len());
         Ok(())
     }
 
     /// 将当前缓存写入磁盘 JSON 文件
     pub fn save(&self) -> Result<(), String> {
         if let Some(parent) = self.cache_file_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("创建缓存目录失败: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("创建缓存目录失败: {}", e))?;
         }
 
         let json = serde_json::to_string_pretty(&self.entries)
@@ -105,11 +101,7 @@ impl VideoCache {
     }
 
     /// 更新指定文件夹的缓存并持久化到磁盘
-    pub fn set(
-        &mut self,
-        folder_path: String,
-        entry: VideoCacheEntry,
-    ) -> Result<(), String> {
+    pub fn set(&mut self, folder_path: String, entry: VideoCacheEntry) -> Result<(), String> {
         self.entries.insert(folder_path, entry);
         self.save()
     }
@@ -126,11 +118,13 @@ mod tests {
         name.push_str("_");
         name.push_str(&std::process::id().to_string());
         name.push_str("_");
-        name.push_str(&std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .to_string());
+        name.push_str(
+            &std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+                .to_string(),
+        );
         let path = std::env::temp_dir().join(name);
         fs::create_dir_all(&path).expect("创建临时目录失败");
         path

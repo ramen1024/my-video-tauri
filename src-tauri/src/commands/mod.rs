@@ -6,6 +6,6 @@
 //! - `share`: 局域网共享服务器控制
 //! - `password_cmd`: 密码保护管理
 
-pub mod video;
-pub mod share;
 pub mod password_cmd;
+pub mod share;
+pub mod video;

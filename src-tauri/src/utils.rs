@@ -16,8 +16,7 @@ use crate::models::VideoFile;
 type IpCacheValue = (Vec<String>, std::time::Instant);
 
 /// IP 地址缓存，存储 (IP列表, 缓存时间)
-static CACHED_IPS: LazyLock<RwLock<Option<IpCacheValue>>> =
-    LazyLock::new(|| RwLock::new(None));
+static CACHED_IPS: LazyLock<RwLock<Option<IpCacheValue>>> = LazyLock::new(|| RwLock::new(None));
 
 /// 将系统时间格式化为可读字符串
 ///
@@ -130,7 +129,10 @@ fn detect_local_ips() -> Vec<String> {
 /// 桌面端仍可回退使用系统播放器打开视频。
 pub fn allow_shared_folder_asset_scope(app: &tauri::AppHandle, folder_path: &str) {
     use tauri::Manager;
-    if let Err(e) = app.asset_protocol_scope().allow_directory(folder_path, true) {
+    if let Err(e) = app
+        .asset_protocol_scope()
+        .allow_directory(folder_path, true)
+    {
         log::warn!("[共享] 设置 asset 协议访问范围失败: {}", e);
     }
 }
@@ -185,7 +187,8 @@ pub fn sanitize_video_path(base: &Path, requested: &str) -> Option<std::path::Pa
     } else {
         log::warn!(
             "Path traversal blocked: {:?} is outside {:?}",
-            canonical_path, canonical_base
+            canonical_path,
+            canonical_base
         );
         None
     }
@@ -201,11 +204,13 @@ mod tests {
         name.push_str("_");
         name.push_str(&std::process::id().to_string());
         name.push_str("_");
-        name.push_str(&std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .to_string());
+        name.push_str(
+            &std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+                .to_string(),
+        );
         let path = std::env::temp_dir().join(name);
         fs::create_dir_all(&path).expect("创建临时目录失败");
         path
@@ -238,7 +243,10 @@ mod tests {
 
     #[test]
     fn test_is_root_directory() {
-        assert!(is_root_directory(Path::new("C:\\")), "Windows 根目录应被识别");
+        assert!(
+            is_root_directory(Path::new("C:\\")),
+            "Windows 根目录应被识别"
+        );
         assert!(is_root_directory(Path::new("/")), "Unix 根目录应被识别");
         assert!(
             !is_root_directory(Path::new("C:\\Users")),
