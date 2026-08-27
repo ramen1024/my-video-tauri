@@ -7,6 +7,11 @@
     <title>视频扫描器</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
+      /*
+        内联基础样式：主题 CSS（theme.css）加载前给出底色，防止首帧闪白。
+        色值与 theme.css 的 --bg / --text 保持一致；此处无法引用 CSS 变量，
+        属 AGENTS.md「禁止硬编码颜色」规则的有意例外，修改主题时需同步更新。
+      */
       body {
         font-family: "Segoe UI", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
         background: #0f172a; color: #ffffff; overflow: hidden; min-height: 100vh;
