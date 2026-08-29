@@ -1,3 +1,5 @@
+# 使用 USTC 镜像加速 crates.io 拉取；境外网络环境可删除
+# [source.crates-io] 与 [source.ustc] 两段配置，恢复使用官方源。
 [source.crates-io]
 replace-with = "ustc"
 
