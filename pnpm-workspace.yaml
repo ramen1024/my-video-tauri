@@ -1,0 +1,5 @@
+# pnpm 11 起设置项只从本文件读取，package.json 的 pnpm 字段已不再生效。
+# esbuild 的 install 脚本默认被拦截，会让 pnpm install 以 ERR_PNPM_IGNORED_BUILDS
+# 退出，进而导致 pnpm check / vite build 无法执行（CI 同样受影响），此处显式放行。
+allowBuilds:
+  esbuild: true

@@ -9,8 +9,17 @@
 | Type check | `pnpm check` |
 | Build release | `pnpm tauri build` |
 | Rust check | `cargo check` (in `src-tauri/`) |
+| Rust test | `cargo test` (in `src-tauri/`) |
+| Rust lint | `cargo clippy --all-targets -- -D warnings` (in `src-tauri/`) |
+| Rust format | `cargo fmt` (in `src-tauri/`) |
 
-No lint, formatter, or test runners are configured.
+CI (`.github/workflows/ci.yml`) runs `cargo fmt --check`, `cargo clippy -- -D warnings`,
+`cargo test`, `pnpm check` and `pnpm build` on `windows-latest`（Linux runner 不可用：
+`utils.rs`/`video.rs` 的路径与符号链接测试依赖 Windows 语义，且编译 tauri 需要额外系统依赖）。
+
+pnpm 11 起设置项只从 `pnpm-workspace.yaml` 读取（`package.json#pnpm` 字段已失效）；
+esbuild 的构建脚本需在该文件的 `allowBuilds` 中显式放行，否则 `pnpm install` 会报
+`ERR_PNPM_IGNORED_BUILDS` 并连带阻断 `pnpm check` / `pnpm build`。
 
 ## Architecture
 
@@ -35,14 +44,14 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 
 ## Backend (`src-tauri/src/`)
 
-- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、scan/refresh/cancel 标志、视频缓存、ETag 缓存、PasswordState）
+- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、服务器对外信息、scan/refresh/cancel 标志、视频缓存、ETag 缓存、PasswordState）
 - `commands/` — `#[tauri::command]` handlers: video.rs, share.rs, password_cmd.rs
 - `server/` — embedded HTTP server: handler.rs (routing), auth.rs, video_serve.rs (Range requests), response.rs
 - `password.rs` — `PasswordState`（由 AppState 持有）：Argon2id 哈希、session、IP 限流、随机 pepper
-- `video_cache.rs` — 扫描结果磁盘缓存（按文件夹维度，扫描时逐文件校验有效性）
+- `video_cache.rs` — 扫描结果磁盘缓存（按文件夹维度，扫描时逐文件校验有效性；临时文件 + 重命名原子写入）
 - `logging.rs` — 双写日志（控制台 + 应用数据目录文件，5MB 轮转）
 - `utils.rs` — IP detection, path sanitization, URL decoding, ETag 计算, asset scope 放行
-- `models.rs` — VideoFile, ShareServerInfo structs (Serialize only)
+- `models.rs` — VideoFile / ShareServerInfo / ShareStatus（IPC）、VideoSummary（HTTP 响应，不含 `path`）
 - `error.rs` — AppError enum with `#[serde(tag, content)]` for Tauri IPC
 
 **Adding a new Tauri command:**
@@ -57,8 +66,12 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - 停止服务器时 worker **并行** join，统一 5s 总超时（`SERVER_STOP_TIMEOUT_SECS`）；端口通过 unblock + Arc 归零释放
 - 共享端口被占用时自动尝试下一个端口，最多 5 个（`MAX_PORT_ATTEMPTS`）
 - 所有扫描入口统一经 `scan_videos_sync` 内的 `ScanGuard` 互斥（桌面扫描与网页 `/refresh` 共用，并发时返回"扫描正在进行中"）
-- 扫描结果按文件夹持久化到 `video_cache.json`；缓存命中需逐文件比对（相对路径 + 大小 + 修改时间），子目录变更也会使缓存失效
+- 扫描结果按文件夹持久化到 `video_cache.json`；缓存命中需逐文件比对（相对路径 + 大小 + 修改时间），子目录变更也会使缓存失效。注意：判定有效性本身就要遍历目录读元数据，所以缓存省下的只是排序与写盘，**不减少目录遍历开销**
 - 视频列表 ETag 缓存在 AppState（按列表 Arc 指针复用），仅列表更换时重算
+- HTTP `GET /videos` 序列化的是 `VideoSummary`（不含本机绝对路径 `path`）；`VideoFile` 仅用于桌面端 IPC，改动时不要混用
+- webview 重载会清空前端状态，`+page.svelte` 的 `onMount` 通过 `get_share_status` 恢复共享状态与文件列表（否则服务器仍在运行却无法停止）
+- `/refresh-status` 以 `pending` 字段表示"本次刷新尚无结果"，前端不得依赖 `message` 文案判断
+- `AppState` 的加锁顺序统一为 handle → threads → state → share_info，新增方法需保持一致，避免 ABBA 死锁
 - `tauri.conf.json` 中 `assetProtocol.scope` 为空，扫描成功后通过 `allow_shared_folder_asset_scope` 动态放行共享文件夹（桌面端播放依赖）
 - 密码 pepper 首次启动随机生成并持久化到 `password_config.json`；旧版固定 pepper 哈希验证通过后自动迁移
 - HTTP 服务器校验 `Host` 头（仅允许本机 IP / localhost），新增端点无需额外处理

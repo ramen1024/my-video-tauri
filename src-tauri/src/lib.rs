@@ -26,7 +26,7 @@ mod video_cache;
 mod test_utils;
 
 pub use error::AppError;
-pub use models::{ShareServerInfo, VideoFile};
+pub use models::{ShareServerInfo, ShareStatus, VideoFile};
 pub use password::PasswordStatus;
 
 /// 初始化日志系统（main 入口调用）
@@ -66,6 +66,8 @@ pub struct AppState {
     server_handle: Arc<RwLock<Option<Arc<tiny_http::Server>>>>,
     /// HTTP 服务器的 worker 线程句柄
     server_threads: Arc<RwLock<Vec<JoinHandle<()>>>>,
+    /// 服务器运行时的对外信息（IP/端口），供前端重载后恢复界面
+    share_info: Arc<RwLock<Option<ShareServerInfo>>>,
     /// 扫描取消标志：设为 true 时中止正在进行的视频扫描
     cancel_scan_flag: Arc<AtomicBool>,
     /// 扫描操作是否正在进行中（防止桌面扫描与网页刷新并发执行）
@@ -93,6 +95,7 @@ impl AppState {
             server_state: Arc::new(Mutex::new(ServerState::Stopped)),
             server_handle: Arc::new(RwLock::new(None)),
             server_threads: Arc::new(RwLock::new(Vec::new())),
+            share_info: Arc::new(RwLock::new(None)),
             cancel_scan_flag: Arc::new(AtomicBool::new(false)),
             scan_in_progress: Arc::new(AtomicBool::new(false)),
             refresh_in_progress: Arc::new(AtomicBool::new(false)),
@@ -231,18 +234,28 @@ impl AppState {
         }
     }
 
-    /// 将服务器设置为运行状态，并保存服务器实例和 worker 线程
-    pub fn set_server_running(&self, server: Arc<tiny_http::Server>, threads: Vec<JoinHandle<()>>) {
+    /// 将服务器设置为运行状态，并保存服务器实例、worker 线程与对外信息
+    pub fn set_server_running(
+        &self,
+        server: Arc<tiny_http::Server>,
+        threads: Vec<JoinHandle<()>>,
+        info: ShareServerInfo,
+    ) {
         let mut handle = self.server_handle.write();
         let mut worker_threads = self.server_threads.write();
         let mut state = self.server_state.lock();
         *handle = Some(server);
         *worker_threads = threads;
         *state = ServerState::Running;
+        *self.share_info.write() = Some(info);
     }
 
     /// 将服务器设置为 Stopping 状态，并返回当前 worker 数量
+    ///
+    /// 加锁顺序（threads → state）与 [`Self::set_server_running`] /
+    /// [`Self::set_server_stopped`] 保持一致，避免并发启停时出现 ABBA 死锁。
     pub fn start_server_stopping(&self) -> Result<usize, AppError> {
+        let worker_count = self.server_threads.read().len();
         let mut state = self.server_state.lock();
         match *state {
             ServerState::Stopped | ServerState::Stopping => {
@@ -251,7 +264,6 @@ impl AppState {
             ServerState::Starting => Err(AppError::Other("服务器正在启动中，请稍后".to_string())),
             ServerState::Running => {
                 *state = ServerState::Stopping;
-                let worker_count = self.server_threads.read().len();
                 Ok(worker_count)
             }
         }
@@ -265,6 +277,21 @@ impl AppState {
         *handle = None;
         *threads = Vec::new();
         *state = ServerState::Stopped;
+        *self.share_info.write() = None;
+    }
+
+    /// 汇总当前共享状态，供前端在 webview 重载后恢复界面
+    ///
+    /// 注意先克隆出 `share_info` 再查询服务器状态，避免持有 `share_info`
+    /// 的同时去取服务器状态锁，与写入路径形成相反的加锁顺序。
+    pub fn share_status(&self) -> ShareStatus {
+        let info = self.share_info.read().clone();
+        ShareStatus {
+            running: self.is_server_running(),
+            ips: info.as_ref().map(|i| i.ips.clone()).unwrap_or_default(),
+            port: info.as_ref().map(|i| i.port).unwrap_or(0),
+            folder_path: self.shared_folder_path(),
+        }
     }
 
     /// 取出当前服务器句柄（用于停止时 unblock）
@@ -385,6 +412,7 @@ pub fn run() {
             commands::video::cancel_scan,
             commands::share::start_share_server,
             commands::share::stop_share_server,
+            commands::share::get_share_status,
             commands::password_cmd::get_password_status,
             commands::password_cmd::set_password_enabled,
             commands::password_cmd::set_password,

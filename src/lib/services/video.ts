@@ -16,6 +16,11 @@ export async function scanVideos(
   return await invoke("scan_videos", { folderPath, useCache });
 }
 
+/** 获取后端当前保存的视频列表（不触发扫描，用于界面恢复） */
+export async function getSharedVideos(): Promise<VideoFile[]> {
+  return await invoke("get_shared_videos");
+}
+
 /** 使用系统默认播放器打开视频文件 */
 export async function playVideo(filePath: string): Promise<void> {
   await invoke("play_video", { filePath });

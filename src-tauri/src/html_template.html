@@ -602,7 +602,9 @@
                     });
                     const result = await response.json();
 
-                    if (result.message !== '无刷新记录') {
+                    // pending 表示后端还没有本次刷新的结果，继续轮询；
+                    // 不依赖 message 文案，避免后端改提示语导致这里误判
+                    if (!result.pending) {
                         return result;
                     }
                 } catch (error) {

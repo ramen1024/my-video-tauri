@@ -11,7 +11,7 @@ use tauri::State;
 
 use crate::constants::{MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS};
 use crate::error::AppError;
-use crate::models::ShareServerInfo;
+use crate::models::{ShareServerInfo, ShareStatus};
 use crate::server;
 use crate::utils::{allow_shared_folder_asset_scope, get_local_ips};
 use crate::AppState;
@@ -71,7 +71,7 @@ pub async fn start_share_server(
     let mut started_port = port;
 
     for attempt in 0..MAX_PORT_ATTEMPTS {
-        let candidate = port + attempt;
+        let candidate = port.saturating_add(attempt);
         let (tx, rx) = std::sync::mpsc::channel();
 
         let server_app_state = Arc::new(app_state.clone());
@@ -114,18 +114,19 @@ pub async fn start_share_server(
 
     match server_handle {
         Some(server_arc) => {
-            app_state.set_server_running(server_arc, worker_handles);
+            let info = ShareServerInfo {
+                ips,
+                port: started_port,
+            };
+            app_state.set_server_running(server_arc, worker_handles, info.clone());
             // 桌面端播放视频需要 asset 协议访问该文件夹
             allow_shared_folder_asset_scope(&app, &folder_path);
             log::info!(
                 "[共享] 服务器启动成功: ips={:?}, port={}",
-                ips,
-                started_port
+                info.ips,
+                info.port
             );
-            Ok(ShareServerInfo {
-                ips,
-                port: started_port,
-            })
+            Ok(info)
         }
         None => {
             app_state.set_server_stopped();
@@ -192,4 +193,14 @@ pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppErro
 
     log::info!("[共享] 服务器已停止");
     Ok(())
+}
+
+/// 查询当前共享状态
+///
+/// 前端在 webview 重载后调用：此时后端的服务器可能仍在运行，而前端已丢失
+/// `isSharing`/`shareInfo` 状态，只能重启应用才能停止共享。本命令同时返回
+/// 上次扫描的文件夹路径，便于前端一并恢复文件列表。
+#[tauri::command]
+pub fn get_share_status(state: State<'_, AppState>) -> ShareStatus {
+    state.share_status()
 }

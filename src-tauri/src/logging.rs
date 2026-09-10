@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
-use log::{LevelFilter, Log, Metadata, Record};
+use log::{Log, Metadata, Record};
 
 /// 日志文件大小上限（超过后轮转）
 const MAX_LOG_FILE_SIZE: u64 = 5 * 1024 * 1024;
@@ -61,8 +61,11 @@ impl Log for DualLogger {
 pub fn init() {
     let console =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).build();
+    // 全局上限必须取自 env 的实际过滤结果（与 env_logger::init 的做法一致）：
+    // 写死 Info 会在记录进入 logger 之前就丢弃 debug/trace，使 RUST_LOG=debug 完全失效
+    let max_level = console.filter();
     log::set_boxed_logger(Box::new(DualLogger { console })).expect("设置日志器失败");
-    log::set_max_level(LevelFilter::Info);
+    log::set_max_level(max_level);
 }
 
 /// 设置日志文件目录（Tauri setup 阶段调用）

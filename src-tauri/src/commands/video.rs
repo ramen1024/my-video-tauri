@@ -98,6 +98,7 @@ impl ScannedFile {
 }
 
 /// 与 [`ScannedFile::into_video_file`] 互逆的字段映射，供缓存校验测试构造样例
+#[cfg(test)]
 impl From<VideoFile> for ScannedFile {
     fn from(v: VideoFile) -> Self {
         Self {
@@ -181,8 +182,8 @@ fn cache_matches(cached: &[VideoFile], scanned: &[ScannedFile]) -> bool {
 /// # 参数
 /// - `folder_path`: 要扫描的文件夹路径
 /// - `app_state`: 应用状态
-/// - `use_cache`: 是否允许使用缓存。正常扫描为 `true`；手动刷新应为 `false`，
-///   但扫描完成后仍会将结果写回缓存。
+/// - `use_cache`: 是否允许命中缓存。目录遍历与逐文件元数据读取始终执行（缓存是否
+///   有效依赖它们判定），`false` 时跳过比对、强制重建列表并把结果写回缓存。
 pub(crate) fn scan_videos_sync(
     folder_path: String,
     app_state: &AppState,

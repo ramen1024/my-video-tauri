@@ -1,9 +1,11 @@
 //! 视频扫描结果缓存模块
 //!
-//! 将扫描得到的视频列表按文件夹维度持久化到磁盘，避免每次启动共享服务器
-//! 都重新执行全量扫描。缓存有效性由调用方在扫描时通过逐文件比对判定
-//! （见 `commands::video::cache_matches`），而非依赖文件夹 mtime——子目录中的
-//! 文件变更不会反映到顶层目录 mtime 上。
+//! 将扫描得到的视频列表按文件夹维度持久化到磁盘。缓存有效性由调用方在扫描时
+//! 通过逐文件比对判定（见 `commands::video::cache_matches`），而非依赖文件夹
+//! mtime——子目录中的文件变更不会反映到顶层目录 mtime 上。
+//!
+//! 实际收益说明：判定缓存是否有效必须遍历目录并读取每个文件的元数据，因此
+//! 缓存命中省下的是「结果排序 + 重复写盘」，并不减少目录遍历开销。
 
 use std::collections::HashMap;
 use std::fs;
@@ -48,7 +50,8 @@ impl VideoCache {
     pub fn set_cache_dir(&mut self, cache_dir: PathBuf) {
         self.cache_file_path = cache_dir.join("video_cache.json");
         if let Err(e) = self.load() {
-            log::debug!("[视频缓存] 从新目录加载缓存失败: {}", e);
+            // 缓存不可读不影响功能（会退回全量扫描），但需要可见以便排查
+            log::warn!("[视频缓存] 从新目录加载缓存失败，将重新扫描: {}", e);
         }
     }
 
@@ -75,6 +78,9 @@ impl VideoCache {
     }
 
     /// 将当前缓存写入磁盘 JSON 文件
+    ///
+    /// 先写临时文件再重命名：写入过程中被中断（进程被杀、磁盘写满）只会留下
+    /// 临时文件，不会把已有缓存截断成半截 JSON 而使缓存永久损坏。
     pub fn save(&self) -> Result<(), String> {
         if let Some(parent) = self.cache_file_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("创建缓存目录失败: {}", e))?;
@@ -83,13 +89,17 @@ impl VideoCache {
         let json = serde_json::to_string_pretty(&self.entries)
             .map_err(|e| format!("序列化缓存失败: {}", e))?;
 
-        let mut file = fs::File::create(&self.cache_file_path)
-            .map_err(|e| format!("创建缓存文件失败: {}", e))?;
-
+        let tmp_path = self.cache_file_path.with_extension("json.tmp");
+        let mut file =
+            fs::File::create(&tmp_path).map_err(|e| format!("创建缓存文件失败: {}", e))?;
         file.write_all(json.as_bytes())
             .map_err(|e| format!("写入缓存文件失败: {}", e))?;
+        drop(file);
 
-        Ok(())
+        fs::rename(&tmp_path, &self.cache_file_path).map_err(|e| {
+            let _ = fs::remove_file(&tmp_path);
+            format!("替换缓存文件失败: {}", e)
+        })
     }
 
     /// 获取指定文件夹的缓存条目
@@ -164,6 +174,37 @@ mod tests {
             assert_eq!(entry.videos.len(), 1);
             assert_eq!(entry.videos[0].name, "test.mp4");
         }
+
+        let _ = fs::remove_dir_all(&cache_dir);
+    }
+
+    #[test]
+    fn test_cache_save_overwrites_existing_file() {
+        let cache_dir = make_temp_dir("cache_overwrite");
+        let mut cache = VideoCache::new(cache_dir.clone());
+        cache
+            .set("/folder".to_string(), sample_entry())
+            .expect("首次保存应成功");
+
+        let updated = VideoCacheEntry {
+            videos: vec![
+                sample_video("a.mp4", 1, None),
+                sample_video("b.mp4", 2, None),
+            ],
+            cached_at: 1,
+        };
+        cache
+            .set("/folder".to_string(), updated)
+            .expect("覆盖保存应成功");
+
+        let mut reloaded = VideoCache::new(cache_dir.clone());
+        reloaded.load().expect("加载缓存应成功");
+        let entry = reloaded.get("/folder").expect("覆盖后应仍能读到缓存");
+        assert_eq!(entry.videos.len(), 2, "覆盖后应读到新内容而非旧内容");
+        assert!(
+            !cache_dir.join("video_cache.json.tmp").exists(),
+            "成功替换后不应残留临时文件"
+        );
 
         let _ = fs::remove_dir_all(&cache_dir);
     }

@@ -5,7 +5,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { ShareServerInfo } from "$lib/types";
+import type { ShareServerInfo, ShareStatus } from "$lib/types";
 
 /** 启动局域网共享服务器 */
 export async function startShareServer(
@@ -18,4 +18,13 @@ export async function startShareServer(
 /** 停止局域网共享服务器 */
 export async function stopShareServer(): Promise<void> {
   await invoke("stop_share_server");
+}
+
+/**
+ * 查询当前共享状态
+ *
+ * 用于 webview 重载后恢复界面：后端服务器可能仍在运行，而前端状态已丢失。
+ */
+export async function getShareStatus(): Promise<ShareStatus> {
+  return await invoke("get_share_status");
 }

@@ -29,6 +29,18 @@ export interface ShareServerInfo {
   port: number;
 }
 
+/** 共享服务器状态，对应 Rust ShareStatus（webview 重载后恢复界面用） */
+export interface ShareStatus {
+  /** 服务器是否正在运行 */
+  running: boolean;
+  /** 运行时的本机 IP 列表，未运行时为空数组 */
+  ips: string[];
+  /** 运行时的监听端口，未运行时为 0 */
+  port: number;
+  /** 当前共享（上次扫描）的文件夹路径，未设置时为空字符串 */
+  folder_path: string;
+}
+
 /** 密码保护状态，对应 Rust PasswordStatus */
 export interface PasswordStatus {
   /** 密码保护是否已启用 */

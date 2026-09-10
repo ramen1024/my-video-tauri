@@ -1,6 +1,6 @@
 {
   "name": "video-scanner",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "视频扫描播放工具",
   "type": "module",
   "scripts": {

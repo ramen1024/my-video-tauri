@@ -127,6 +127,10 @@ fn detect_local_ips() -> Vec<String> {
 /// 配置文件中的 `assetProtocol.scope` 保持最小化（空），用户选择文件夹后在此
 /// 动态放行，避免 `**` 全盘范围带来的任意文件读取风险。失败仅记日志，
 /// 桌面端仍可回退使用系统播放器打开视频。
+///
+/// 只放行、不撤销：切换文件夹后旧目录仍在放行范围内。范围里都是用户显式选择过的
+/// 目录，风险可控；若要收紧为"仅当前目录"，需配合 `Scope::forbid_directory`，
+/// 但 forbid 的优先级高于 allow 且不会因再次 allow 而解除，切换回旧目录会被误伤。
 pub fn allow_shared_folder_asset_scope(app: &tauri::AppHandle, folder_path: &str) {
     use tauri::Manager;
     if let Err(e) = app

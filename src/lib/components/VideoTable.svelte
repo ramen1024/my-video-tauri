@@ -132,23 +132,27 @@
     <div class="table-body" style="height: {$virtualizer.getTotalSize()}px;">
       {#each $virtualizer.getVirtualItems() as row (row.key)}
         {@const video = displayVideos[row.index]}
-        <div class="table-row" role="button" tabindex="0" style="height: {row.size}px; transform: translateY({row.start}px);" onclick={() => onPlay(video)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(video); } }}>
-          <div class="col-name">
-            <span class="video-name">{video.name}</span>
-            <span class="video-ext">.{video.extension}</span>
+        <!-- count 在 $effect 中滞后同步：过滤使列表变短的那一次渲染仍会拿到旧范围的
+             index，此时 video 为 undefined，跳过即可避免访问 video.name 抛错 -->
+        {#if video}
+          <div class="table-row" role="button" tabindex="0" style="height: {row.size}px; transform: translateY({row.start}px);" onclick={() => onPlay(video)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(video); } }}>
+            <div class="col-name">
+              <span class="video-name">{video.name}</span>
+              <span class="video-ext">.{video.extension}</span>
+            </div>
+            <div class="col-size">{formatFileSize(video.size)}</div>
+            <div class="col-date">{video.modified || "-"}</div>
+            <div class="col-action">
+              {#if isSupportedFormat(video.extension)}
+                <button class="play-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="播放">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                </button>
+              {:else}
+                <button class="system-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="系统打开">打开</button>
+              {/if}
+            </div>
           </div>
-          <div class="col-size">{formatFileSize(video.size)}</div>
-          <div class="col-date">{video.modified || "-"}</div>
-          <div class="col-action">
-            {#if isSupportedFormat(video.extension)}
-              <button class="play-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="播放">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-              </button>
-            {:else}
-              <button class="system-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="系统打开">打开</button>
-            {/if}
-          </div>
-        </div>
+        {/if}
       {/each}
     </div>
   </div>

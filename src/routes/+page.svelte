@@ -9,8 +9,8 @@
   import type { VideoFile, ShareServerInfo, PasswordStatus } from "$lib/types";
   import { parseAppError } from "$lib/types";
   import { isSupportedFormat } from "$lib/utils/format";
-  import { scanVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
-  import { startShareServer, stopShareServer } from "$lib/services/share";
+  import { scanVideos, getSharedVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
+  import { startShareServer, stopShareServer, getShareStatus } from "$lib/services/share";
   import { getPasswordStatus } from "$lib/services/password";
   import { DEFAULT_SHARE_PORT } from "$lib/config";
   import Header from "$lib/components/Header.svelte";
@@ -36,6 +36,9 @@
     try {
       const selected = await open({ directory: true, multiple: false, title: "选择视频文件夹" });
       if (selected) {
+        // 换文件夹时先清空列表，避免扫描失败后残留上一个文件夹的内容；
+        // 刷新同一个文件夹时保留旧列表，扫描完成后整体覆盖，避免界面闪空
+        if (selected !== currentFolder) videos = [];
         currentFolder = selected;
         currentVideo = null;
         await doScan();
@@ -107,7 +110,31 @@
     }
   }
 
+  /**
+   * 恢复后端已有的状态
+   *
+   * webview 重载（开发期 HMR、崩溃后 reload、菜单 reload）会清空前端状态，
+   * 但后端的服务器可能仍在运行。不恢复的话界面会显示"局域网共享"未开启，
+   * 点击又只会得到"服务器已在运行"，用户除了重启应用没办法停掉共享。
+   */
+  async function restoreBackendState() {
+    try {
+      const status = await getShareStatus();
+      if (status.folder_path) {
+        currentFolder = status.folder_path;
+        videos = await getSharedVideos();
+      }
+      if (status.running) {
+        shareInfo = { ips: status.ips, port: status.port };
+        isSharing = true;
+      }
+    } catch (e) {
+      console.error("恢复共享状态失败:", e);
+    }
+  }
+
   onMount(async () => {
+    await restoreBackendState();
     try {
       passwordStatus = await getPasswordStatus();
     } catch (e) {

@@ -2,6 +2,22 @@
 
 本项目所有重要变更记录于此，格式参考 [Keep a Changelog](https://keepachangelog.com/)。
 
+## v0.3.4
+
+- 安全：局域网 `GET /videos` 不再返回本机绝对路径（新增 `VideoSummary`），避免泄露服务器文件系统结构
+- 新增 `get_share_status` 命令：webview 重载后恢复共享状态与文件列表，修复"服务器仍在运行却无法停止"的死角
+- `/refresh-status` 新增 `pending` 字段，前端不再靠 `message` 文案判断刷新结果（改文案会静默改变轮询行为）
+- 修复视频列表搜索过滤瞬间可能渲染越界项并抛错（虚拟列表 count 滞后一帧同步）
+- 修复 `Host` 头解析对 IPv6 字面量（`[::1]:6008`）误判为非法而返回 403
+- 修复日志全局级别写死 Info 导致 `RUST_LOG=debug` 完全失效
+- 修复共享端口自增可能发生 u16 溢出（改用 saturating_add）
+- 修复启停服务器加锁顺序不一致（threads/state 顺序相反）可能导致的 ABBA 死锁
+- 视频缓存改为"临时文件 + 重命名"原子写入，加载失败日志从 debug 提升为 warn（不再静默退化）
+- 移除 `panic = "abort"` 构建下永远无法生效的 `catch_unwind`；清理 IP 限流中的死分支
+- 桌面端切换文件夹时先清空列表，避免扫描失败后残留上一个文件夹的内容
+- 新增 GitHub Actions CI（fmt / clippy / test / svelte-check / build，Windows runner）
+- 新增 `pnpm-workspace.yaml`：pnpm 11 起设置项不再从 `package.json#pnpm` 读取，且需显式放行 esbuild 构建脚本
+
 ## v0.3.3
 
 - 修复扫描缓存陈旧问题：缓存改为逐文件校验（路径/大小/修改时间），子目录增删文件也能感知

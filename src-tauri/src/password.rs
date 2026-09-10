@@ -320,7 +320,8 @@ impl PasswordState {
 
     /// 检查指定 IP 是否被频率限制锁定
     ///
-    /// 连续失败 MAX_FAILED_ATTEMPTS 次后，IP 将被锁定 LOCK_DURATION_SECS 秒
+    /// 连续失败 MAX_FAILED_ATTEMPTS 次后，IP 将被锁定 LOCK_DURATION_SECS 秒。
+    /// 锁定到期后的记录由 [`prune_expired_attempts`] 统一清理。
     fn check_rate_limit(&self, ip: &str) -> Result<(), String> {
         let mut attempts = self.failed_attempts.write();
         prune_expired_attempts(&mut attempts);
@@ -331,15 +332,14 @@ impl PasswordState {
                 let remaining = attempt.locked_until - now;
                 return Err(format!("访问已锁定，请{}秒后重试", remaining));
             }
-            if now > attempt.locked_until && attempt.count >= MAX_FAILED_ATTEMPTS {
-                attempts.remove(ip);
-            }
         }
 
         Ok(())
     }
 
     /// 记录一次登录失败，达到阈值后锁定该 IP
+    ///
+    /// 触发锁定时把连续失败次数归零：锁定到期后该 IP 会重新获得完整的尝试次数。
     fn record_failed_attempt(&self, ip: &str) {
         let mut attempts = self.failed_attempts.write();
         prune_expired_attempts(&mut attempts);

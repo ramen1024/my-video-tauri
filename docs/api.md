@@ -68,7 +68,6 @@ Content-Type: application/json
 [
   {
     "name": "demo.mp4",
-    "path": "C:\\videos\\movies\\demo.mp4",
     "relative_path": "movies/demo.mp4",
     "size": 123456789,
     "modified": "2024-01-15 14:30:00",
@@ -76,6 +75,8 @@ Content-Type: application/json
   }
 ]
 ```
+
+响应中**不包含**视频的绝对路径：`path` 是服务器本机路径（如 `C:\\Users\\...`），属于实现细节，局域网客户端的播放只需要 `relative_path`，服务端序列化时会显式剥掉该字段（对应 Rust 侧 `VideoSummary`）。
 
 响应头包含 `ETag`（基于全部视频的路径/大小/修改时间生成的全量指纹），客户端可携带 `If-None-Match` 请求头。当数据未发生变化时，服务器返回 `304 Not Modified`，响应体为空。
 
@@ -120,9 +121,12 @@ Content-Type: application/json
 ```json
 {
   "success": true,
+  "pending": true,
   "message": "无刷新记录"
 }
 ```
+
+客户端应以 `pending` 字段判断"本次刷新是否已有结果"（为 `true` 时继续轮询），不要依赖 `message` 文案。有结果时响应正文就是 `/refresh` 触发的那次扫描的结果对象，不含 `pending` 字段。
 
 ---
 
