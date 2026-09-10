@@ -48,13 +48,13 @@
     }
   }
 
-  async function doScan(useCache: boolean = true) {
+  async function doScan() {
     if (!currentFolder) return;
     isScanning = true;
     errorMsg = "";
     // 保留旧列表，扫描完成后直接覆盖，避免界面闪空
     try {
-      videos = await scanVideos(currentFolder, useCache);
+      videos = await scanVideos(currentFolder);
     } catch (e) {
       const msg = parseAppError(e);
       if (msg.includes("扫描已取消")) {
@@ -65,10 +65,6 @@
     } finally {
       isScanning = false;
     }
-  }
-
-  async function refreshScan() {
-    await doScan(false);
   }
 
   function handleCancelScan() {
@@ -154,7 +150,7 @@
     {currentFolder}
     {isStartingShare}
     onSelectFolder={selectFolder}
-    onScan={refreshScan}
+    onScan={doScan}
     onStartShare={startShare}
     onStopShare={stopShare}
   />

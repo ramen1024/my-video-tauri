@@ -4,7 +4,6 @@
 //! 前端通过 Tauri IPC 调用 commands 模块中注册的命令，
 //! 后端通过 server 模块提供局域网 HTTP 共享服务。
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -20,7 +19,6 @@ mod models;
 mod password;
 mod server;
 mod utils;
-mod video_cache;
 
 #[cfg(test)]
 mod test_utils;
@@ -82,8 +80,6 @@ pub struct AppState {
     videos_etag: Arc<RwLock<Option<VideosEtagCacheValue>>>,
     /// 密码保护状态（哈希、session、频率限制、配置目录）
     password: Arc<password::PasswordState>,
-    /// 视频扫描结果缓存
-    video_cache: Arc<Mutex<video_cache::VideoCache>>,
 }
 
 impl AppState {
@@ -103,9 +99,6 @@ impl AppState {
             refresh_result: Arc::new(RwLock::new(None)),
             videos_etag: Arc::new(RwLock::new(None)),
             password: Arc::new(password::PasswordState::new()),
-            video_cache: Arc::new(Mutex::new(video_cache::VideoCache::new(
-                std::env::temp_dir(),
-            ))),
         }
     }
 
@@ -160,18 +153,6 @@ impl AppState {
     /// 获取密码保护状态的 Arc 引用（用于后台清理线程持有）
     pub fn password_arc(&self) -> Arc<password::PasswordState> {
         self.password.clone()
-    }
-
-    // ---------------- 视频扫描缓存 ----------------
-
-    /// 获取视频缓存的内部引用
-    pub fn video_cache(&self) -> &Arc<Mutex<video_cache::VideoCache>> {
-        &self.video_cache
-    }
-
-    /// 重新设置视频缓存目录（例如使用 app_data_dir）
-    pub fn set_video_cache_dir(&self, cache_dir: PathBuf) {
-        self.video_cache.lock().set_cache_dir(cache_dir);
     }
 
     // ---------------- 扫描取消标志 ----------------
@@ -396,7 +377,6 @@ pub fn run() {
 
             if let Ok(data_dir) = app.path().app_data_dir() {
                 app_state.password().set_config_dir(data_dir.clone());
-                app_state.set_video_cache_dir(data_dir.clone());
                 logging::set_log_file(data_dir);
             }
 

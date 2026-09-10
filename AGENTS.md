@@ -44,11 +44,10 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 
 ## Backend (`src-tauri/src/`)
 
-- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、服务器对外信息、scan/refresh/cancel 标志、视频缓存、ETag 缓存、PasswordState）
+- `lib.rs` — Tauri Builder setup + Managed State（`AppState`：shared_videos、服务器状态机、服务器对外信息、scan/refresh/cancel 标志、ETag 缓存、PasswordState）
 - `commands/` — `#[tauri::command]` handlers: video.rs, share.rs, password_cmd.rs
 - `server/` — embedded HTTP server: handler.rs (routing), auth.rs, video_serve.rs (Range requests), response.rs
 - `password.rs` — `PasswordState`（由 AppState 持有）：Argon2id 哈希、session、IP 限流、随机 pepper
-- `video_cache.rs` — 扫描结果磁盘缓存（按文件夹维度，扫描时逐文件校验有效性；临时文件 + 重命名原子写入）
 - `logging.rs` — 双写日志（控制台 + 应用数据目录文件，5MB 轮转）
 - `utils.rs` — IP detection, path sanitization, URL decoding, ETag 计算, asset scope 放行
 - `models.rs` — VideoFile / ShareServerInfo / ShareStatus（IPC）、VideoSummary（HTTP 响应，不含 `path`）
@@ -66,7 +65,7 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - 停止服务器时 worker **并行** join，统一 5s 总超时（`SERVER_STOP_TIMEOUT_SECS`）；端口通过 unblock + Arc 归零释放
 - 共享端口被占用时自动尝试下一个端口，最多 5 个（`MAX_PORT_ATTEMPTS`）
 - 所有扫描入口统一经 `scan_videos_sync` 内的 `ScanGuard` 互斥（桌面扫描与网页 `/refresh` 共用，并发时返回"扫描正在进行中"）
-- 扫描结果按文件夹持久化到 `video_cache.json`；缓存命中需逐文件比对（相对路径 + 大小 + 修改时间），子目录变更也会使缓存失效。注意：判定有效性本身就要遍历目录读元数据，所以缓存省下的只是排序与写盘，**不减少目录遍历开销**
+- 每次扫描都完整遍历目录并读取每文件元数据，**扫描结果不落盘缓存**（v0.3.3 及更早版本的 `video_cache.json` 已移除：判定缓存有效性本身就要遍历目录，缓存只省下排序与写盘，收益不抵一处额外的磁盘 IO 与失效风险）
 - 视频列表 ETag 缓存在 AppState（按列表 Arc 指针复用），仅列表更换时重算
 - HTTP `GET /videos` 序列化的是 `VideoSummary`（不含本机绝对路径 `path`）；`VideoFile` 仅用于桌面端 IPC，改动时不要混用
 - webview 重载会清空前端状态，`+page.svelte` 的 `onMount` 通过 `get_share_status` 恢复共享状态与文件列表（否则服务器仍在运行却无法停止）

@@ -42,7 +42,7 @@ pub async fn start_share_server(
     let folder_path_clone = folder_path.clone();
     let scan_app_state = app_state.clone();
     let scan_result = match tauri::async_runtime::spawn_blocking(move || {
-        super::video::scan_videos_sync(folder_path_clone, &scan_app_state, true)
+        super::video::scan_videos_sync(folder_path_clone, &scan_app_state)
     })
     .await
     {

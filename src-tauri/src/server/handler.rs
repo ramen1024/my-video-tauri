@@ -162,17 +162,13 @@ pub fn handle_request(
             std::thread::spawn(move || {
                 // 扫描路径不使用 unwrap / 索引，也没有 panic 源；且 release 构建为
                 // panic = "abort"，catch_unwind 在此场景下本就无法生效，故不做包装
-                let msg = match crate::commands::video::scan_videos_sync(
-                    folder_path,
-                    &scan_app_state,
-                    false,
-                ) {
-                    Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"})
-                        .to_string(),
-                    Err(e) => {
-                        serde_json::json!({"success": false, "message": e.to_string()}).to_string()
-                    }
-                };
+                let msg =
+                    match crate::commands::video::scan_videos_sync(folder_path, &scan_app_state) {
+                        Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"})
+                            .to_string(),
+                        Err(e) => serde_json::json!({"success": false, "message": e.to_string()})
+                            .to_string(),
+                    };
                 log::info!("[刷新] {}", msg);
                 scan_app_state.set_refresh_result(msg);
                 scan_app_state.finish_refresh();

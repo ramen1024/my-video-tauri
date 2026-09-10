@@ -9,11 +9,8 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { VideoFile } from "$lib/types";
 
 /** 扫描指定文件夹中的视频文件 */
-export async function scanVideos(
-  folderPath: string,
-  useCache: boolean = true
-): Promise<VideoFile[]> {
-  return await invoke("scan_videos", { folderPath, useCache });
+export async function scanVideos(folderPath: string): Promise<VideoFile[]> {
+  return await invoke("scan_videos", { folderPath });
 }
 
 /** 获取后端当前保存的视频列表（不触发扫描，用于界面恢复） */
