@@ -65,7 +65,7 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 - 停止服务器时 worker **并行** join，统一 5s 总超时（`SERVER_STOP_TIMEOUT_SECS`）；端口通过 unblock + Arc 归零释放
 - 共享端口被占用时自动尝试下一个端口，最多 5 个（`MAX_PORT_ATTEMPTS`）
 - 所有扫描入口统一经 `scan_videos_sync` 内的 `ScanGuard` 互斥（桌面扫描与网页 `/refresh` 共用，并发时返回"扫描正在进行中"）
-- 每次扫描都完整遍历目录并读取每文件元数据，**扫描结果不落盘缓存**（v0.3.3 及更早版本的 `video_cache.json` 已移除：判定缓存有效性本身就要遍历目录，缓存只省下排序与写盘，收益不抵一处额外的磁盘 IO 与失效风险）
+- 每次扫描都完整遍历目录并读取每文件元数据，**扫描结果不落盘缓存**（v0.3.4 及更早版本的 `video_cache.json` 已移除：判定缓存有效性本身就要遍历目录，缓存只省下排序与写盘，收益不抵一处额外的磁盘 IO 与失效风险）
 - 视频列表 ETag 缓存在 AppState（按列表 Arc 指针复用），仅列表更换时重算
 - HTTP `GET /videos` 序列化的是 `VideoSummary`（不含本机绝对路径 `path`）；`VideoFile` 仅用于桌面端 IPC，改动时不要混用
 - webview 重载会清空前端状态，`+page.svelte` 的 `onMount` 通过 `get_share_status` 恢复共享状态与文件列表（否则服务器仍在运行却无法停止）
