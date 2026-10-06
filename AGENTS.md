@@ -62,8 +62,9 @@ Frontend runs in Tauri webview; Rust backend provides IPC commands + embedded HT
 
 - Cargo.toml package name is `video-scanner`；中文名 `视频扫描器` 在 `tauri.conf.json`（productName、mainBinaryName）
 - 视频流式响应在独立线程中写出，不占用 HTTP worker；并发上限 16 路（`MAX_CONCURRENT_STREAMS`），超出时退回 worker 内同步写出形成背压
-- 停止服务器时 worker **并行** join，统一 5s 总超时（`SERVER_STOP_TIMEOUT_SECS`）；端口通过 unblock + Arc 归零释放
-- 共享端口被占用时自动尝试下一个端口，最多 5 个（`MAX_PORT_ATTEMPTS`）
+- **worker 的存活只由 `server::StopSignal` 决定，绝不读 `AppState::ServerState`**：`start_http_server` 启动 worker 时状态仍是 `Starting`，`Running` 要等调用方 `set_server_running` 之后才写入。若 worker 用状态机判断自己是否该工作，就会在这段窗口内集体退出——端口仍在监听却无人处理请求，客户端只能一直挂起。每次启动新建一个 `StopSignal`，旧实例的停止不影响新实例
+- 停止服务器先置 `StopSignal`（worker 在循环顶判断），再按 worker 数量 `unblock()` 唤醒阻塞在 `recv` 的 worker（`unblock()` 以哨兵入队，没有线程在等也不会丢失）；随后 worker **并行** join，统一 5s 总超时（`SERVER_STOP_TIMEOUT_SECS`）
+- 端口被占用时自动尝试下一个端口，最多 5 个（`MAX_PORT_ATTEMPTS`）；每次尝试用独立的 `StopSignal`，等待启动超时后立即置位，避免迟到的成功实例留下占着端口的孤儿 worker
 - 所有扫描入口统一经 `scan_videos_sync` 内的 `ScanGuard` 互斥（桌面扫描与网页 `/refresh` 共用，并发时返回"扫描正在进行中"）
 - 每次扫描都完整遍历目录并读取每文件元数据，**扫描结果不落盘缓存**（v0.3.4 及更早版本的 `video_cache.json` 已移除：判定缓存有效性本身就要遍历目录，缓存只省下排序与写盘，收益不抵一处额外的磁盘 IO 与失效风险）
 - 视频列表 ETag 缓存在 AppState（按列表 Arc 指针复用），仅列表更换时重算

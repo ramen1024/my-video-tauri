@@ -60,8 +60,8 @@ pub struct AppState {
     shared_folder_path: Arc<RwLock<String>>,
     /// HTTP 共享服务器的运行状态
     server_state: Arc<Mutex<ServerState>>,
-    /// tiny_http 服务器实例
-    server_handle: Arc<RwLock<Option<Arc<tiny_http::Server>>>>,
+    /// 当前 HTTP 服务器实例（监听套接字 + 本次实例的停止信号）
+    server_handle: Arc<RwLock<Option<Arc<server::RunningServer>>>>,
     /// HTTP 服务器的 worker 线程句柄
     server_threads: Arc<RwLock<Vec<JoinHandle<()>>>>,
     /// 服务器运行时的对外信息（IP/端口），供前端重载后恢复界面
@@ -216,16 +216,16 @@ impl AppState {
     }
 
     /// 将服务器设置为运行状态，并保存服务器实例、worker 线程与对外信息
-    pub fn set_server_running(
+    pub(crate) fn set_server_running(
         &self,
-        server: Arc<tiny_http::Server>,
+        running: Arc<server::RunningServer>,
         threads: Vec<JoinHandle<()>>,
         info: ShareServerInfo,
     ) {
         let mut handle = self.server_handle.write();
         let mut worker_threads = self.server_threads.write();
         let mut state = self.server_state.lock();
-        *handle = Some(server);
+        *handle = Some(running);
         *worker_threads = threads;
         *state = ServerState::Running;
         *self.share_info.write() = Some(info);
@@ -251,7 +251,7 @@ impl AppState {
     }
 
     /// 将服务器完全置为停止状态，并清空服务器句柄与线程记录
-    pub fn set_server_stopped(&self) {
+    pub(crate) fn set_server_stopped(&self) {
         let mut handle = self.server_handle.write();
         let mut threads = self.server_threads.write();
         let mut state = self.server_state.lock();
@@ -275,13 +275,13 @@ impl AppState {
         }
     }
 
-    /// 取出当前服务器句柄（用于停止时 unblock）
-    pub fn take_server_handle(&self) -> Option<Arc<tiny_http::Server>> {
+    /// 取出当前服务器运行句柄（用于停止时置停止信号并 unblock）
+    pub(crate) fn take_server_handle(&self) -> Option<Arc<server::RunningServer>> {
         self.server_handle.write().take()
     }
 
     /// 取出当前所有 worker 线程句柄
-    pub fn take_server_threads(&self) -> Vec<JoinHandle<()>> {
+    pub(crate) fn take_server_threads(&self) -> Vec<JoinHandle<()>> {
         std::mem::take(&mut *self.server_threads.write())
     }
 

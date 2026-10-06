@@ -12,7 +12,7 @@ use tauri::State;
 use crate::constants::{MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS};
 use crate::error::AppError;
 use crate::models::{ShareServerInfo, ShareStatus};
-use crate::server;
+use crate::server::{self, StopSignal};
 use crate::utils::{allow_shared_folder_asset_scope, get_local_ips};
 use crate::AppState;
 
@@ -66,18 +66,26 @@ pub async fn start_share_server(
 
     // 端口被占用时自动尝试下一个端口，最多 MAX_PORT_ATTEMPTS 个
     let mut last_error = "服务器启动失败".to_string();
-    let mut server_handle: Option<Arc<tiny_http::Server>> = None;
+    let mut server_handle: Option<Arc<server::RunningServer>> = None;
     let mut worker_handles: Vec<JoinHandle<()>> = Vec::new();
     let mut started_port = port;
 
     for attempt in 0..MAX_PORT_ATTEMPTS {
         let candidate = port.saturating_add(attempt);
         let (tx, rx) = std::sync::mpsc::channel();
+        // 每次尝试使用独立的停止信号：只有本次绑定成功并真正投入运行时才会被保留
+        let stop_signal = StopSignal::new();
 
         let server_app_state = Arc::new(app_state.clone());
         let ips_clone = ips.clone();
+        let signal_for_thread = stop_signal.clone();
         std::thread::spawn(move || {
-            let result = server::start_http_server(&ips_clone, candidate, server_app_state);
+            let result = server::start_http_server(
+                &ips_clone,
+                candidate,
+                server_app_state,
+                signal_for_thread,
+            );
             let _ = tx.send(result);
         });
 
@@ -89,36 +97,41 @@ pub async fn start_share_server(
             Ok(res) => res,
             Err(e) => {
                 log::error!("[共享] 等待服务器启动失败: {}", e);
+                stop_signal.stop();
                 last_error = format!("等待服务器启动失败: {}", e);
                 continue;
             }
         };
 
         match server_result {
-            Ok(Ok((server_arc, handles))) => {
-                server_handle = Some(server_arc);
+            Ok(Ok((running, handles))) => {
+                server_handle = Some(Arc::new(running));
                 worker_handles = handles;
                 started_port = candidate;
                 break;
             }
             Ok(Err(e)) => {
                 log::warn!("[共享] 端口 {} 启动失败: {}", candidate, e);
+                stop_signal.stop();
                 last_error = e;
             }
             Err(_) => {
+                // 等待超时：启动线程可能仍在推进，置停止信号保证它即使随后绑定成功，
+                // worker 也会立即退出，不会留下无人跟踪、却占着端口的孤儿实例
                 log::warn!("[共享] 端口 {} 启动超时", candidate);
+                stop_signal.stop();
                 last_error = "服务器启动超时".to_string();
             }
         }
     }
 
     match server_handle {
-        Some(server_arc) => {
+        Some(running) => {
             let info = ShareServerInfo {
                 ips,
                 port: started_port,
             };
-            app_state.set_server_running(server_arc, worker_handles, info.clone());
+            app_state.set_server_running(running, worker_handles, info.clone());
             // 桌面端播放视频需要 asset 协议访问该文件夹
             allow_shared_folder_asset_scope(&app, &folder_path);
             log::info!(
@@ -138,7 +151,8 @@ pub async fn start_share_server(
 
 /// 停止局域网共享服务器
 ///
-/// 通过 unblock 通知各 worker 线程退出，并等待它们完全结束后再释放端口。
+/// 先置停止信号（worker 在循环顶判断），再 unblock 唤醒阻塞在 recv 的 worker；
+/// 等待它们完全结束后再释放监听套接字。
 /// 只有等所有 worker 线程退出、tiny_http Server 的 Arc 引用归零，
 /// 操作系统才会真正释放监听端口，避免再次启动时出现 "地址已在使用" 错误。
 #[tauri::command]
@@ -148,11 +162,8 @@ pub async fn stop_share_server(state: State<'_, AppState>) -> Result<(), AppErro
     let worker_count = app_state.start_server_stopping()?;
     log::info!("[共享] 开始停止服务器, worker_count={}", worker_count);
 
-    if let Some(server) = app_state.take_server_handle() {
-        for _ in 0..worker_count.max(1) {
-            server.unblock();
-        }
-        drop(server);
+    if let Some(running) = app_state.take_server_handle() {
+        running.shutdown(worker_count);
     }
 
     let handles = app_state.take_server_threads();
