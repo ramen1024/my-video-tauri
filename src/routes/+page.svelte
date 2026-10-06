@@ -1,15 +1,13 @@
 <!--
   主页面
-  应用的唯一页面，编排所有子组件，管理全局状态。
-  布局以工作区为核心，使用最小化的容器装饰。
+  应用的唯一页面：桌面端（Tauri）与网页端（局域网浏览器）共用同一份实现，
+  环境差异由 $lib/platform 提供的后端与 platform.kind 决定。
 -->
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import type { VideoFile, ShareServerInfo, PasswordStatus } from "$lib/types";
+  import { onMount, onDestroy } from "svelte";
+  import { platform, type VideoItem } from "$lib/platform";
+  import type { ShareServerInfo, PasswordStatus } from "$lib/types";
   import { parseAppError } from "$lib/types";
-  import { isSupportedFormat } from "$lib/utils/format";
-  import { scanVideos, getSharedVideos, playVideo as playVideoFile, cancelScan } from "$lib/services/video";
   import { startShareServer, stopShareServer, getShareStatus } from "$lib/services/share";
   import { getPasswordStatus } from "$lib/services/password";
   import { DEFAULT_SHARE_PORT } from "$lib/config";
@@ -22,67 +20,73 @@
   import "$lib/styles/theme.css";
   import "$lib/styles/buttons.css";
 
-  let videos = $state<VideoFile[]>([]);
+  const isDesktop = platform.kind === "desktop";
+
+  let videos = $state<VideoItem[]>([]);
   let currentFolder = $state("");
   let isScanning = $state(false);
   let errorMsg = $state("");
-  let currentVideo = $state<VideoFile | null>(null);
+  let currentVideo = $state<VideoItem | null>(null);
   let isSharing = $state(false);
   let shareInfo = $state<ShareServerInfo | null>(null);
   let isStartingShare = $state(false);
+  let isStoppingShare = $state(false);
   let passwordStatus = $state<PasswordStatus>({ enabled: false, has_password: false });
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   async function selectFolder() {
     try {
-      const selected = await open({ directory: true, multiple: false, title: "选择视频文件夹" });
-      if (selected) {
-        // 换文件夹时先清空列表，避免扫描失败后残留上一个文件夹的内容；
-        // 刷新同一个文件夹时保留旧列表，扫描完成后整体覆盖，避免界面闪空
-        if (selected !== currentFolder) videos = [];
-        currentFolder = selected;
-        currentVideo = null;
-        await doScan();
-      }
+      const selected = await platform.pickFolder();
+      if (!selected) return;
+      // 换文件夹时先清空列表，避免扫描失败后残留上一个文件夹的内容；
+      // 刷新同一个文件夹时保留旧列表，扫描完成后整体覆盖，避免界面闪空
+      if (selected !== currentFolder) videos = [];
+      currentFolder = selected;
+      currentVideo = null;
+      await doScan();
     } catch (e) {
       errorMsg = "选择文件夹失败: " + parseAppError(e);
     }
   }
 
   async function doScan() {
-    if (!currentFolder) return;
+    if (platform.canPickFolder && !currentFolder) return;
     isScanning = true;
     errorMsg = "";
-    // 保留旧列表，扫描完成后直接覆盖，避免界面闪空
     try {
-      videos = await scanVideos(currentFolder);
+      videos = await platform.rescan(currentFolder);
     } catch (e) {
       const msg = parseAppError(e);
-      if (msg.includes("扫描已取消")) {
-        errorMsg = "扫描已取消";
-      } else {
-        errorMsg = "扫描失败: " + msg;
-      }
+      errorMsg = msg.includes("扫描已取消") ? "扫描已取消" : "扫描失败: " + msg;
     } finally {
       isScanning = false;
     }
   }
 
   function handleCancelScan() {
-    cancelScan().catch(() => {});
+    platform.cancelScan().catch((e) => {
+      console.error("取消扫描失败:", e);
+    });
   }
 
-  function playVideo(video: VideoFile) {
-    if (isSupportedFormat(video.extension)) {
+  async function playVideo(video: VideoItem) {
+    if (platform.canPlayInline(video)) {
+      errorMsg = "";
       currentVideo = video;
-    } else {
-      playVideoFile(video.path).catch(e => {
-        errorMsg = "无法播放该视频文件: " + parseAppError(e);
-      });
+      return;
+    }
+    try {
+      await platform.openWithSystemPlayer(video);
+    } catch (e) {
+      errorMsg = "无法播放该视频文件: " + parseAppError(e);
     }
   }
 
   async function startShare() {
-    if (!currentFolder) { errorMsg = "请先选择文件夹"; return; }
+    if (!currentFolder) {
+      errorMsg = "请先选择文件夹";
+      return;
+    }
     isStartingShare = true;
     errorMsg = "";
     try {
@@ -97,17 +101,31 @@
   }
 
   async function stopShare() {
+    isStoppingShare = true;
     try {
       await stopShareServer();
       isSharing = false;
       shareInfo = null;
     } catch (e) {
       errorMsg = "停止共享失败: " + parseAppError(e);
+    } finally {
+      isStoppingShare = false;
     }
   }
 
   /**
-   * 恢复后端已有的状态
+   * 拉取最新列表
+   *
+   * 后端约定"列表未变化时返回同一个数组引用"，据此跳过状态更新，
+   * 轮询时不会造成整表重渲染。
+   */
+  async function refreshList() {
+    const next = await platform.loadVideos();
+    if (next !== videos) videos = next;
+  }
+
+  /**
+   * 恢复后端已有的状态（仅桌面端）
    *
    * webview 重载（开发期 HMR、崩溃后 reload、菜单 reload）会清空前端状态，
    * 但后端的服务器可能仍在运行。不恢复的话界面会显示"局域网共享"未开启，
@@ -118,30 +136,63 @@
       const status = await getShareStatus();
       if (status.folder_path) {
         currentFolder = status.folder_path;
-        videos = await getSharedVideos();
+        videos = await platform.loadVideos();
       }
       if (status.running) {
         shareInfo = { ips: status.ips, port: status.port };
         isSharing = true;
       }
     } catch (e) {
-      console.error("恢复共享状态失败:", e);
+      errorMsg = "恢复共享状态失败: " + parseAppError(e);
     }
   }
 
   onMount(async () => {
-    await restoreBackendState();
-    try {
-      passwordStatus = await getPasswordStatus();
-    } catch (e) {
-      console.error("获取密码状态失败:", e);
+    if (isDesktop) {
+      await restoreBackendState();
+      try {
+        passwordStatus = await getPasswordStatus();
+      } catch (e) {
+        console.error("获取密码状态失败:", e);
+      }
+    } else {
+      // 网页端：初始加载 + 按平台约定的间隔轮询（列表可能被其他人刷新）
+      try {
+        await refreshList();
+      } catch (e) {
+        errorMsg = parseAppError(e);
+      }
     }
+  });
+
+  $effect(() => {
+    const interval = platform.listPollIntervalMs;
+    if (interval === null) return;
+    pollTimer = setInterval(() => {
+      refreshList().catch((e) => {
+        // 轮询失败不打断使用：仅记录，避免每 30 秒弹一次错误
+        console.error("刷新列表失败:", e);
+      });
+    }, interval);
+    return () => {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+    };
+  });
+
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
   });
 </script>
 
 <main class="app">
   {#if currentVideo}
-    <VideoPlayer video={currentVideo} onClose={() => { currentVideo = null; }} />
+    <VideoPlayer
+      video={currentVideo}
+      videoSrc={platform.videoSrc(currentVideo)}
+      onClose={() => { currentVideo = null; }}
+      onError={(msg) => { errorMsg = msg; }}
+    />
   {/if}
 
   <Header
@@ -149,13 +200,16 @@
     {isSharing}
     {currentFolder}
     {isStartingShare}
+    {isStoppingShare}
+    canPickFolder={platform.canPickFolder}
+    canShare={platform.canShare}
     onSelectFolder={selectFolder}
     onScan={doScan}
     onStartShare={startShare}
     onStopShare={stopShare}
   />
 
-  {#if currentFolder}
+  {#if isDesktop && currentFolder}
     <div class="folder-path">
       <span class="path-label">当前文件夹</span>
       <span class="path-value">{currentFolder}</span>
@@ -175,7 +229,7 @@
 
   <div class="content">
     {#if isScanning}
-      <div class="loading">
+      <div class="loading" role="status" aria-live="polite">
         <div class="spinner"></div>
         <p>正在扫描视频文件...</p>
         <button class="btn btn-danger" onclick={handleCancelScan}>取消扫描</button>
@@ -183,10 +237,10 @@
     {:else if videos.length === 0}
       <div class="empty-state">
         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-        <p>请选择文件夹以扫描视频文件</p>
+        <p>{platform.canPickFolder ? "请选择文件夹以扫描视频文件" : "共享文件夹中暂无可播放的视频"}</p>
       </div>
     {:else}
-      <VideoTable {videos} onPlay={playVideo} />
+      <VideoTable {videos} onPlay={playVideo} canPlayInline={(v) => platform.canPlayInline(v)} />
     {/if}
   </div>
 </main>

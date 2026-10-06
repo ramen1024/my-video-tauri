@@ -78,6 +78,8 @@ pub struct AppState {
     refresh_result: Arc<RwLock<Option<String>>>,
     /// 视频列表 ETag 缓存：(列表 Arc 指针, 指纹)。指针一致时复用，避免每次请求全量计算
     videos_etag: Arc<RwLock<Option<VideosEtagCacheValue>>>,
+    /// 前端静态资源来源（网页端通过内嵌 HTTP 服务器加载同一份 SvelteKit 产物）
+    frontend_assets: Arc<RwLock<Option<server::assets::FrontendAssets>>>,
     /// 密码保护状态（哈希、session、频率限制、配置目录）
     password: Arc<password::PasswordState>,
 }
@@ -98,6 +100,7 @@ impl AppState {
             refresh_cooldown: Arc::new(AtomicBool::new(false)),
             refresh_result: Arc::new(RwLock::new(None)),
             videos_etag: Arc::new(RwLock::new(None)),
+            frontend_assets: Arc::new(RwLock::new(None)),
             password: Arc::new(password::PasswordState::new()),
         }
     }
@@ -153,6 +156,18 @@ impl AppState {
     /// 获取密码保护状态的 Arc 引用（用于后台清理线程持有）
     pub fn password_arc(&self) -> Arc<password::PasswordState> {
         self.password.clone()
+    }
+
+    // ---------------- 前端静态资源 ----------------
+
+    /// 设置前端静态资源来源（Tauri setup 阶段注入内嵌的 `frontendDist`）
+    pub(crate) fn set_frontend_assets(&self, assets: server::assets::FrontendAssets) {
+        *self.frontend_assets.write() = Some(assets);
+    }
+
+    /// 获取前端静态资源来源（未注入时返回 `None`，HTTP 服务器据此返回 503）
+    pub(crate) fn frontend_assets(&self) -> Option<server::assets::FrontendAssets> {
+        self.frontend_assets.read().clone()
     }
 
     // ---------------- 扫描取消标志 ----------------
@@ -374,6 +389,11 @@ pub fn run() {
         )
         .setup(|app| {
             let app_state = AppState::new();
+
+            // 网页端与桌面端共用同一份 SvelteKit 构建产物
+            app_state.set_frontend_assets(server::assets::FrontendAssets::embedded(
+                app.handle().clone(),
+            ));
 
             if let Ok(data_dir) = app.path().app_data_dir() {
                 app_state.password().set_config_dir(data_dir.clone());

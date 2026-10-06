@@ -2,20 +2,24 @@
   VideoTable 组件
   视频文件列表，支持排序与搜索。
   使用虚拟滚动渲染大量视频项，视觉以可读性为主。
+  桌面端与网页端共用：条目统一为 $lib/platform 的 VideoItem。
 -->
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { get } from "svelte/store";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
-  import type { VideoFile, SortField, SortDirection } from "$lib/types";
-  import { formatFileSize, isSupportedFormat } from "$lib/utils/format";
+  import type { VideoItem } from "$lib/platform";
+  import type { SortField, SortDirection } from "$lib/types";
+  import { formatFileSize } from "$lib/utils/format";
 
   interface Props {
-    videos: VideoFile[];
-    onPlay: (video: VideoFile) => void;
+    videos: VideoItem[];
+    onPlay: (video: VideoItem) => void;
+    /** 该条目能否在应用内播放（否则按钮语义为"用系统播放器打开"） */
+    canPlayInline: (video: VideoItem) => boolean;
   }
 
-  let { videos, onPlay }: Props = $props();
+  let { videos, onPlay, canPlayInline }: Props = $props();
 
   let sortField = $state<SortField>("name");
   let sortDirection = $state<SortDirection>("asc");
@@ -62,6 +66,9 @@
     return list;
   });
 
+  /** 全部视频的总大小（不受搜索过滤影响，与"共 N 个视频"口径一致） */
+  let totalSize = $derived(videos.reduce((sum, v) => sum + v.size, 0));
+
   const ROW_HEIGHT = 56;
 
   let scrollElement: HTMLDivElement | null = $state(null);
@@ -71,23 +78,30 @@
     count: displayVideos.length,
     getScrollElement: () => scrollElement,
     estimateSize: () => ROW_HEIGHT,
-    getItemKey: (index) => displayVideos[index]?.path ?? index,
+    getItemKey: (index) => displayVideos[index]?.relativePath ?? index,
   });
 
   $effect(() => {
     get(virtualizer).setOptions({
       count: displayVideos.length,
-      getItemKey: (index) => displayVideos[index]?.path ?? index,
+      getItemKey: (index) => displayVideos[index]?.relativePath ?? index,
     });
   });
 
   function sortLabel(field: SortField): string {
     return { name: "文件名", size: "大小", modified: "修改日期" }[field];
   }
+
+  function handleRowKeydown(e: KeyboardEvent, video: VideoItem) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onPlay(video);
+    }
+  }
 </script>
 
 <div class="video-toolbar">
-  <div class="video-count">共 {videos.length} 个视频</div>
+  <div class="video-count">共 {videos.length} 个视频 · 总计 {formatFileSize(totalSize)}</div>
   <div class="search-box">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
     <input type="text" placeholder="搜索视频..." value={searchTerm} oninput={handleSearchInput} aria-label="搜索视频" />
@@ -135,7 +149,7 @@
         <!-- count 在 $effect 中滞后同步：过滤使列表变短的那一次渲染仍会拿到旧范围的
              index，此时 video 为 undefined，跳过即可避免访问 video.name 抛错 -->
         {#if video}
-          <div class="table-row" role="button" tabindex="0" style="height: {row.size}px; transform: translateY({row.start}px);" onclick={() => onPlay(video)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPlay(video); } }}>
+          <div class="table-row" role="button" tabindex="0" style="height: {row.size}px; transform: translateY({row.start}px);" onclick={() => onPlay(video)} onkeydown={(e) => handleRowKeydown(e, video)}>
             <div class="col-name">
               <span class="video-name">{video.name}</span>
               <span class="video-ext">.{video.extension}</span>
@@ -143,12 +157,12 @@
             <div class="col-size">{formatFileSize(video.size)}</div>
             <div class="col-date">{video.modified || "-"}</div>
             <div class="col-action">
-              {#if isSupportedFormat(video.extension)}
-                <button class="play-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="播放">
+              {#if canPlayInline(video)}
+                <button class="play-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} onkeydown={(e) => e.stopPropagation()} aria-label="播放">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                 </button>
               {:else}
-                <button class="system-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} aria-label="系统打开">打开</button>
+                <button class="system-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} onkeydown={(e) => e.stopPropagation()} aria-label="用系统播放器打开">打开</button>
               {/if}
             </div>
           </div>

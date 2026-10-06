@@ -7,19 +7,12 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        :root {
-            --bg: #0f172a;
-            --surface: #111827;
-            --border: rgba(255, 255, 255, 0.08);
-            --text: #f8fafc;
-            --text-secondary: rgba(255, 255, 255, 0.55);
-            --text-tertiary: rgba(255, 255, 255, 0.4);
-            --accent: #3b82f6;
-            --accent-light: #60a5fa;
-            --danger: #fca5a5;
-            --warning: #fcd34d;
-            --radius: 12px;
-        }
+        /*
+          设计令牌由服务端在响应时注入同一个 theme.css（见 server/handler.rs 的
+          render_login_page）。此处不再自带第二份 :root 定义：两套令牌一旦分叉，
+          改主题时必然漏掉其中一处。
+        */
+        /* {theme_tokens} */
 
         body {
             font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -39,7 +32,7 @@
             max-width: 360px;
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
+            border-radius: var(--radius-lg);
             padding: 32px 28px 28px;
             box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
         }
@@ -171,7 +164,7 @@
             inset: 0;
             background: rgba(15, 23, 42, 0.6);
             backdrop-filter: blur(2px);
-            border-radius: var(--radius);
+            border-radius: var(--radius-lg);
             display: flex;
             align-items: center;
             justify-content: center;

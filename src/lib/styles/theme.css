@@ -54,6 +54,9 @@
   --danger-hover: rgba(239, 68, 68, 0.2);
   --danger-border: rgba(239, 68, 68, 0.2);
 
+  /* 警告（黄） */
+  --warning: #fcd34d;
+
   /* 共享按钮（绿色实底） */
   --share: #059669;
   --share-hover: #10b981;

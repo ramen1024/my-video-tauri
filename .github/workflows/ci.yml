@@ -59,3 +59,9 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+      # 默认跳过、需要真实前端产物的端到端校验（build/ 由上面的 pnpm build 生成）。
+      # 显式在这一步执行，使"必须先构建前端"的测试被真实覆盖而不是静默跳过。
+      - name: Rust tests (real frontend build)
+        working-directory: src-tauri
+        run: cargo test -- --ignored

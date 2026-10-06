@@ -7,12 +7,17 @@
 //! - `handler`: 请求路由与处理
 //! - `auth`: 密码认证接口
 //! - `video_serve`: 视频文件服务（支持 Range 请求）
+//! - `assets`: 前端静态资源（桌面端与网页端共用同一份构建产物）
 //! - `response`: HTTP 响应构造工具
 
+pub mod assets;
 mod auth;
 mod handler;
 mod response;
 mod video_serve;
+
+#[cfg(test)]
+mod api_tests;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -168,7 +173,7 @@ pub fn start_http_server(
 
                 match server.incoming_requests().next() {
                     Some(mut request) => {
-                        let resp = handler::handle_request(&mut request, &ips, port, &app_state);
+                        let resp = handler::handle_request(&mut request, &ips, &app_state);
                         let url = request.url().to_string();
                         if url.starts_with("/video/") {
                             // 视频流式响应可能长时间占用连接，放到独立线程写出，
@@ -208,65 +213,11 @@ pub fn start_http_server(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Read, Write};
-    use std::net::TcpStream;
-    use std::time::{Duration, Instant};
+    use crate::test_utils::{http_request, join_all_with_timeout};
+    use std::time::Duration;
 
     /// 测试用 Host：`handle_request` 只放行本机 IP / localhost
     const TEST_IP: &str = "127.0.0.1";
-
-    /// 向测试服务器发一个最小 HTTP/1.1 请求并读回完整响应
-    fn http_get(port: u16, path: &str) -> String {
-        let mut stream = TcpStream::connect((TEST_IP, port)).expect("连接测试服务器失败");
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .expect("设置读超时失败");
-        let request = format!(
-            "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-            path, TEST_IP
-        );
-        stream.write_all(request.as_bytes()).expect("写入请求失败");
-
-        let mut response = String::new();
-        stream.read_to_string(&mut response).expect("读取响应失败");
-        response
-    }
-
-    /// 读取响应状态行，例如 "HTTP/1.1 200 OK"
-    fn status_line(response: &str) -> &str {
-        response.lines().next().unwrap_or("")
-    }
-
-    /// 在超时内并行等待所有 worker 退出，返回成功退出的线程数
-    ///
-    /// 与 `stop_share_server` 的做法一致：不用无超时的 `join`，
-    /// 否则实现出错时测试会永久挂起而不是失败。
-    fn join_all_with_timeout(
-        handles: Vec<std::thread::JoinHandle<()>>,
-        timeout: Duration,
-    ) -> usize {
-        let count = handles.len();
-        let (tx, rx) = std::sync::mpsc::channel();
-        for handle in handles {
-            let tx = tx.clone();
-            std::thread::spawn(move || {
-                let _ = handle.join();
-                let _ = tx.send(());
-            });
-        }
-        drop(tx);
-
-        let deadline = Instant::now() + timeout;
-        let mut finished = 0;
-        for _ in 0..count {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if rx.recv_timeout(remaining).is_err() {
-                break;
-            }
-            finished += 1;
-        }
-        finished
-    }
 
     /// 启动一个绑定到临时端口的测试服务器，返回 (运行句柄, worker 句柄, 端口)
     fn start_test_server(
@@ -312,12 +263,11 @@ mod tests {
 
         let (running, handles, port) = start_test_server(&app_state);
         let worker_count = handles.len();
-        let response = http_get(port, "/videos");
+        let response = http_request(port, "GET", "/videos", &[]);
 
-        assert!(
-            status_line(&response).contains("200"),
-            "Starting 状态下 worker 必须仍在服务请求，实际状态行: {:?}",
-            status_line(&response)
+        assert_eq!(
+            response.status, 200,
+            "Starting 状态下 worker 必须仍在服务请求（旧实现此处会读超时）"
         );
 
         running.shutdown(worker_count);
@@ -368,12 +318,8 @@ mod tests {
 
         let (second, second_handles, port) = start_test_server(&app_state);
         let second_count = second_handles.len();
-        let response = http_get(port, "/videos");
-        assert!(
-            status_line(&response).contains("200"),
-            "重启后的新实例必须正常服务，实际状态行: {:?}",
-            status_line(&response)
-        );
+        let response = http_request(port, "GET", "/videos", &[]);
+        assert_eq!(response.status, 200, "重启后的新实例必须正常服务请求");
 
         second.shutdown(second_count);
         assert_eq!(

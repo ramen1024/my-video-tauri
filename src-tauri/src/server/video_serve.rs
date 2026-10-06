@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::constants::{is_supported_video_extension, video_content_type};
 use crate::utils::sanitize_video_path;
 use crate::AppState;
 
@@ -71,6 +72,11 @@ fn parse_range(range_header: Option<&str>, file_size: u64) -> Option<(u64, u64)>
 /// 解析 URL 中的视频路径，验证安全性后返回文件内容。
 /// 支持 Range 请求头，返回 206 Partial Content 响应；
 /// 无法满足的 Range 请求返回 416。
+///
+/// 路径校验包含两道关卡：目录包含（防路径穿越）与扩展名白名单。
+/// 缺少后者时本端点会退化成"共享目录的通用文件下载器"——目录里的
+/// `.txt`/`.db`/配置等任意文件都能被局域网客户端取走，而桌面端的
+/// `play_video` 是校验扩展名的。
 pub fn handle_video_request(
     url: &str,
     range_header: Option<&str>,
@@ -89,6 +95,22 @@ pub fn handle_video_request(
             return super::response::text_response(403, "Access denied: invalid path");
         }
     };
+
+    // 仅允许受支持的视频扩展名，避免把共享目录变成任意文件下载端点
+    let extension = video_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+    if !extension
+        .as_deref()
+        .is_some_and(is_supported_video_extension)
+    {
+        log::warn!(
+            "[HTTP服务器] 拒绝非视频文件请求: {:?}",
+            video_path.file_name()
+        );
+        return super::response::text_response(403, "Access denied: not a supported video file");
+    }
 
     if !video_path.exists() {
         return super::response::text_response(404, "File not found");
@@ -123,7 +145,7 @@ pub fn handle_video_request(
         return super::response::text_response(500, "Seek error");
     }
 
-    let content_type = crate::constants::video_content_type(
+    let content_type = video_content_type(
         video_path
             .extension()
             .and_then(|e| e.to_str())
