@@ -4,6 +4,12 @@
 
 ## 未发布（v0.3.5）
 
+### 适配 rustc 1.98+（CI 修复）
+
+- `AtomicUsize::fetch_update` 在 rustc 1.98+ 被标记 deprecated（统一更名为 `try_update`），CI 的 `clippy -D warnings` 因此失败，改用新名（`server/mod.rs` 的 `StreamLimiter`）
+- 顺带修复 rustc 1.98/1.99 下本地无法编译的问题：cargo 新 resolver 在 **build-dependency（host 单元）** 的 feature 统一里不再给 indexmap 1.9.3 打开 `std`，autocfg 的 sysroot 探测也未兜底，缺失 `has_std` 的 no_std 形态 `IndexMap<K, V, S>`（`S` 无默认值）令 schemars 0.8（tauri-build 传递依赖）按两参数写法使用时报 E0107。在 `[build-dependencies]` 显式声明 indexmap 强制 `std`（feature 统一取并集，必生效）
+- rustc 1.98.1 / 1.99.0 双工具链完整验证：fmt / clippy / test（76 passed）/ ignored test 全绿
+
 ### 结构：合并为单一前端
 
 - **删除第二套网页端实现**：原先网页端是内联在 `html_template.html` 里的独立页面（约 490 行 CSS + 337 行 JS），与 Svelte 桌面端重复实现列表渲染、排序搜索、播放器、错误提示，且已经出现行为漂移（同一份"格式化文件大小"两个版本，网页版缺单位下标保护；设计令牌两份 `:root` 各写一遍）。现在网页端直接加载桌面端同一份 SvelteKit 构建产物，由内嵌 HTTP 服务器（新增 `server/assets.rs`）提供

@@ -104,7 +104,7 @@ impl StreamLimiter {
     fn try_acquire(self: &Arc<Self>) -> Option<StreamPermit> {
         let acquired = self
             .available
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |n| {
                 (n > 0).then_some(n - 1)
             })
             .is_ok();

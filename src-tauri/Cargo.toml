@@ -15,6 +15,15 @@ path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# 本包的 build script 不直接使用 indexmap；显式声明是为了在 build-dependency
+# （host 单元）的 feature 统一里强制打开它的 `std` feature。背景：schemars 0.8
+# 是 tauri-build 的传递依赖，按 `IndexMap<K, V>` 两参数使用 indexmap 1.9.3，
+# 该写法只在 `has_std` cfg（S 参数带 RandomState 默认值）下合法；cargo 1.98+
+# 的 resolver 在 build-dep 单元里不再打开 std（autocfg 的 sysroot 探测也失败），
+# no_std 形态的 `IndexMap<K, V, S>`（S 无默认值）令 schemars 报 E0107，
+# rustc 1.98/1.99 下无法编译。schemars 0.8 已停止维护、版本由 tauri 决定，
+# 只能在这一侧强制。
+indexmap = { version = "1.9.3", features = ["std"] }
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
