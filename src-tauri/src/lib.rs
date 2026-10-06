@@ -76,6 +76,8 @@ pub struct AppState {
     refresh_cooldown: Arc<AtomicBool>,
     /// 最近一次刷新操作的结果（JSON 字符串）
     refresh_result: Arc<RwLock<Option<String>>>,
+    /// 最近一次扫描的报告（被跳过的文件等），供界面提示"列表为什么少了文件"
+    last_scan_report: Arc<RwLock<models::ScanReport>>,
     /// 视频列表 ETag 缓存：(列表 Arc 指针, 指纹)。指针一致时复用，避免每次请求全量计算
     videos_etag: Arc<RwLock<Option<VideosEtagCacheValue>>>,
     /// 前端静态资源来源（网页端通过内嵌 HTTP 服务器加载同一份 SvelteKit 产物）
@@ -99,6 +101,7 @@ impl AppState {
             refresh_in_progress: Arc::new(AtomicBool::new(false)),
             refresh_cooldown: Arc::new(AtomicBool::new(false)),
             refresh_result: Arc::new(RwLock::new(None)),
+            last_scan_report: Arc::new(RwLock::new(models::ScanReport::default())),
             videos_etag: Arc::new(RwLock::new(None)),
             frontend_assets: Arc::new(RwLock::new(None)),
             password: Arc::new(password::PasswordState::new()),
@@ -317,6 +320,21 @@ impl AppState {
         *self.refresh_result.write() = None;
     }
 
+    // ---------------- 扫描报告 ----------------
+
+    /// 获取最近一次扫描的报告
+    ///
+    /// 界面据此提示"某个文件因为太小被跳过"，避免用户面对"我放了 20 个、列表里 18 个"
+    /// 却找不到原因。
+    pub fn last_scan_report(&self) -> models::ScanReport {
+        self.last_scan_report.read().clone()
+    }
+
+    /// 记录最近一次扫描的报告
+    pub fn set_last_scan_report(&self, report: models::ScanReport) {
+        *self.last_scan_report.write() = report;
+    }
+
     /// 检查是否有刷新正在进行
     pub fn is_refresh_in_progress(&self) -> bool {
         self.refresh_in_progress.load(Ordering::Acquire)
@@ -374,8 +392,12 @@ pub fn run() {
             tauri::plugin::Builder::<tauri::Wry, ()>::new("navigation-guard")
                 .on_navigation(|_webview, url| {
                     let url_str = url.as_str();
-                    let allowed = url_str.starts_with("http://localhost:1420")
-                        || url_str.starts_with("http://localhost:1421")
+                    // dev server 端口来自 constants.rs（有测试与 vite.config.js 比对），
+                    // 避免改了 Vite 端口却忘了改这里，导致开发时页面被守卫拦成空白
+                    let dev_server = format!("http://localhost:{}", constants::DEV_SERVER_PORT);
+                    let dev_hmr = format!("http://localhost:{}", constants::DEV_HMR_PORT);
+                    let allowed = url_str.starts_with(&dev_server)
+                        || url_str.starts_with(&dev_hmr)
                         || url_str.starts_with("https://tauri.localhost")
                         || url_str.starts_with("http://tauri.localhost")
                         || url_str.starts_with("tauri://")

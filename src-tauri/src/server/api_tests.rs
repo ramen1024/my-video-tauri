@@ -335,6 +335,7 @@ fn login_redirects_to_root_when_password_protection_is_disabled() {
 fn video_endpoint_serves_videos_and_rejects_other_files() {
     let media_dir = make_temp_dir("http_api_media");
     create_test_video(&media_dir.join("movie.mp4"), 4096);
+    create_test_video(&media_dir.join("UPPER.MP4"), 4096);
     std::fs::write(media_dir.join("notes.txt"), b"top secret").expect("写入 txt 失败");
     std::fs::write(media_dir.join("db.sqlite"), b"secret").expect("写入 db 失败");
 
@@ -345,6 +346,16 @@ fn video_endpoint_serves_videos_and_rejects_other_files() {
     let movie = server.get("/video/movie.mp4");
     assert_eq!(movie.status, 200, "受支持的视频扩展名应可播放");
     assert_eq!(movie.header("Content-Type"), Some("video/mp4"));
+
+    // 大小写：白名单比对是小写的，Content-Type 也必须同样按小写解析，
+    // 否则 `.MP4` 会通过校验却以 application/octet-stream 返回，浏览器拒绝内联播放
+    let upper = server.get("/video/UPPER.MP4");
+    assert_eq!(upper.status, 200, "大写扩展名应通过白名单");
+    assert_eq!(
+        upper.header("Content-Type"),
+        Some("video/mp4"),
+        "大写扩展名必须得到正确的 Content-Type，而不是 application/octet-stream"
+    );
 
     for path in ["/video/notes.txt", "/video/db.sqlite"] {
         let resp = server.get(path);

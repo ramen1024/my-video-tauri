@@ -1,9 +1,10 @@
 /**
  * 设计令牌（Design Tokens）
  *
- * 统一的颜色 / 圆角 / 字体 / 阴影体系。
- * 变量命名与网页端模板（src-tauri/src/html_template.html 的 :root）
- * 保持一致：--bg / --surface / --border / --text / --accent 等。
+ * 统一的颜色 / 圆角 / 字体 / 阴影体系，是本项目**唯一的颜色来源**：
+ * Svelte 组件直接 `import` 本文件，登录页（`src-tauri/src/login_template.html`）
+ * 由服务端在响应时把本文件注入它的 `theme_tokens` 占位符
+ * （见 `src-tauri/src/server/handler.rs` 的 `render_login_page`）。
  *
  * 原则：
  * - 层级靠明度递进：bg → surface → surface-hover/raised/pressed
@@ -56,6 +57,8 @@
 
   /* 警告（黄） */
   --warning: #fcd34d;
+  --warning-soft: rgba(251, 191, 36, 0.1);
+  --warning-border: rgba(251, 191, 36, 0.2);
 
   /* 共享按钮（绿色实底） */
   --share: #059669;
@@ -64,6 +67,8 @@
 
   /* 特殊场景 */
   --overlay: rgba(0, 0, 0, 0.85);
+  --scrim: rgba(15, 23, 42, 0.6);
+  --scrim-strong: rgba(15, 23, 42, 0.9);
   --black: #000000;
   --white: #ffffff;
 
@@ -77,4 +82,5 @@
 
   /* 阴影 */
   --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.6);
+  --shadow-card: 0 16px 48px rgba(0, 0, 0, 0.4);
 }

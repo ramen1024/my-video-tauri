@@ -34,7 +34,7 @@
             border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             padding: 32px 28px 28px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+            box-shadow: var(--shadow-card);
         }
 
         .login-header {
@@ -72,8 +72,8 @@
             width: 56px;
             height: 64px;
             border-radius: 10px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1.5px solid rgba(255, 255, 255, 0.1);
+            background: var(--surface-hover);
+            border: 1.5px solid var(--border-strong);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -85,8 +85,8 @@
 
         .pin-box.has-digit {
             color: var(--accent-light);
-            border-color: rgba(59, 130, 246, 0.35);
-            background: rgba(59, 130, 246, 0.08);
+            border-color: var(--accent-border);
+            background: var(--accent-soft);
         }
 
         .pin-box.has-digit.masked {
@@ -102,13 +102,13 @@
         }
 
         .pin-box.error {
-            border-color: #ef4444;
-            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--danger-strong);
+            background: var(--danger-soft);
             animation: shake 0.35s ease;
         }
 
         .pin-box.error::after {
-            background: #ef4444;
+            background: var(--danger-strong);
         }
 
         @keyframes shake {
@@ -144,14 +144,14 @@
         }
 
         .banner.error .banner-inner {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.2);
+            background: var(--danger-soft);
+            border: 1px solid var(--danger-border);
             color: var(--danger);
         }
 
         .banner.warning .banner-inner {
-            background: rgba(251, 191, 36, 0.1);
-            border: 1px solid rgba(251, 191, 36, 0.2);
+            background: var(--warning-soft);
+            border: 1px solid var(--warning-border);
             color: var(--warning);
         }
 
@@ -162,7 +162,7 @@
         .numpad-overlay {
             position: absolute;
             inset: 0;
-            background: rgba(15, 23, 42, 0.6);
+            background: var(--scrim);
             backdrop-filter: blur(2px);
             border-radius: var(--radius-lg);
             display: flex;
@@ -213,9 +213,9 @@
 
         .num-btn {
             height: 56px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--surface-raised);
             border-radius: 10px;
-            background: rgba(255, 255, 255, 0.04);
+            background: var(--surface-hover);
             color: var(--text);
             font-size: 20px;
             font-weight: 500;
@@ -227,12 +227,12 @@
         }
 
         .num-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(59, 130, 246, 0.25);
+            background: var(--surface-raised);
+            border-color: var(--accent-soft-hover);
         }
 
         .num-btn:active {
-            background: rgba(59, 130, 246, 0.15);
+            background: var(--accent-soft);
         }
 
         .num-btn.action {
@@ -246,15 +246,15 @@
         }
 
         .num-btn.delete:hover {
-            background: rgba(239, 68, 68, 0.1);
-            border-color: rgba(239, 68, 68, 0.2);
+            background: var(--danger-soft);
+            border-color: var(--danger-border);
             color: var(--danger);
         }
 
         .success-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(15, 23, 42, 0.9);
+            background: var(--scrim-strong);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -274,12 +274,12 @@
             width: 56px;
             height: 56px;
             border-radius: 50%;
-            background: rgba(16, 185, 129, 0.12);
-            border: 2px solid rgba(16, 185, 129, 0.3);
+            background: var(--success-soft);
+            border: 2px solid var(--success-border);
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #34d399;
+            color: var(--success-light);
             margin-bottom: 14px;
         }
 
@@ -291,7 +291,7 @@
         .success-text {
             font-size: 15px;
             font-weight: 600;
-            color: #34d399;
+            color: var(--success-light);
         }
 
         @media (max-width: 380px) {

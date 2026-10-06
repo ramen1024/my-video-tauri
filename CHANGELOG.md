@@ -7,7 +7,8 @@
 ### 结构：合并为单一前端
 
 - **删除第二套网页端实现**：原先网页端是内联在 `html_template.html` 里的独立页面（约 490 行 CSS + 337 行 JS），与 Svelte 桌面端重复实现列表渲染、排序搜索、播放器、错误提示，且已经出现行为漂移（同一份"格式化文件大小"两个版本，网页版缺单位下标保护；设计令牌两份 `:root` 各写一遍）。现在网页端直接加载桌面端同一份 SvelteKit 构建产物，由内嵌 HTTP 服务器（新增 `server/assets.rs`）提供
-- 新增 `src/lib/platform/` 运行环境抽象层：一份 `Platform` 接口 + `desktop.ts`（Tauri IPC）与 `web.ts`（HTTP 接口）两个实现，组件只依赖接口与 `canPickFolder` / `canShare` / `listPollIntervalMs` 能力标志
+- 新增 `src/lib/platform/` 运行环境抽象层：一份 `Platform` 接口 + `desktop.ts`（Tauri IPC）与 `web.ts`（HTTP 接口）两个实现，组件只依赖接口与 `canPickFolder` / `canShare` / `canCancelScan` / `listPollIntervalMs` 能力标志
+- 局域网共享控制与密码状态也纳入 `Platform`（网页端实现为抛错桩），页面不再直接 import `$lib/services/*`——此前 `+page.svelte` 是唯一的例外，与本层"差异全部收敛于此"的约定相悖
 - 静态资源按 SvelteKit 产物约定区分缓存：`_app/immutable/**` 强缓存，`_app/` 下其他文件 `no-store`，页面 `no-store`
 - 页面与登录页的内联脚本改为注入**每次请求随机**的 CSP nonce，浏览器端 CSP 不再放行 `script-src 'unsafe-inline'`
 - 设计令牌收敛为单一来源：登录页原来自带的第二份 `:root` 改为响应时注入 `src/lib/styles/theme.css`，并补齐模板实际用到的 `--warning` 令牌
@@ -24,12 +25,23 @@
 - 端口自增重试期间，某次尝试等待启动超时后立即置位该次尝试的 `StopSignal`，避免迟到的成功实例留下无人跟踪却占着端口的孤儿 worker
 - 日志轮转改为**每次写入后**检查大小，不再只在启动时检查一次：长跑会话的 `video-scanner.log` 此前会无上限增长，与文档承诺的"超 5MB 轮转"不符
 - 停止共享、启动共享增加进行中状态；选择文件夹在扫描期间禁用，避免并发扫描把界面置于"文件夹标签与列表不一致"的死角
+- **`/video/*` 的 Content-Type 改为复用已小写化的扩展名**：白名单比对是小写的，Content-Type 却用原始扩展名，导致 `Movie.MP4` 这类文件通过校验后拿到 `application/octet-stream`，浏览器可能拒绝内联播放（网页端表现为点了播放没反应）
+- 网页端隐藏"取消扫描"按钮：扫描跑在服务端后台线程、没有取消接口，此前该按钮点了没反应；改为由新增的 `Platform.canCancelScan` 能力标志控制渲染
+- **修复"内核能播却被禁止内联播放"**：桌面端判断"能否应用内播放"用的是只列了 mp4/webm/m4v 的静态清单，于是 MKV、MOV 这类 webview 其实能解码的容器被强制交给系统播放器。改为 `INLINE_PLAYABLE_EXTENSIONS`（mp4 / m4v / mkv / webm / mov）**并补上失败回退**：`<video>` 触发 error 时自动改用系统播放器（`Platform.canPlayInline` 改为语义更准确的 `preferInlinePlayback`，新增 `canOpenWithSystemPlayer` 能力标志）。清单取值来自对 webview 的**真实播放测试**而非 `canPlayType`——后者只反映 MIME 声明，对 mov 会给出假阴性
 
-### 测试
+### 重构：硬编码收敛与跨文件一致性
 
-- 新增 `server/api_tests.rs`：用裸 TCP 对真实 tiny_http 服务器做端到端请求，覆盖此前零测试的请求编排层——Host 校验（403）、登录门与 `/login` 语义、SPA 与静态资源路由及缓存头、CSP nonce 注入与页面一致性、`/videos` 的 ETag/304 与"不泄露绝对路径"、`/video/*` 的扩展名与穿越防护、`/auth` 的 cookie 属性
+- **两份 CSP 加同步断言**：桌面端 CSP 在 `tauri.conf.json`（`tauri-codegen` 构建期注入内联脚本 sha256 哈希），浏览器端 CSP 在 `server/response.rs`（每次请求注入随机 nonce），二者无法合并成一份字符串，但"哪些指令两边必须有、取值是什么"是同一个决策。新增 `constants.rs` 的 `CSP_SHARED_DIRECTIVES`（两侧都显式写出的部分，逐字比对）与 `WEB_CSP_HARDENED_DIRECTIVES`（浏览器端显式收紧、不得比 `default-src 'self'` 更松的部分），由新增的 `server/csp_tests.rs` 断言。这是整套配置里唯一能让应用整体不可用的一处：漏掉某条指令时桌面端正常、浏览器端被拦（或反之），而编译与类型检查都不会报错
+- **`MIN_VIDEO_FILE_SIZE_BYTES` 的过滤不再静默**：小于阈值的文件此前被 `return None` 直接丢弃，用户只看到"放了 20 个、列表里 18 个"却无从得知原因。现在改为经 `models::ScanReport` 记录（文件名 + 大小 + 总数 + 是否截断），由 `scan_videos` 的 IPC 返回值与 `/refresh-status` 一并交给界面，`+page.svelte` 用中性色提示条列出被跳过的文件
+- **`DEFAULT_SHARE_PORT` 与 dev 端口单点化**：`start_share_server` 现在把 `port == 0` 解释为"使用后端默认端口"（`constants::DEFAULT_SHARE_PORT`），使该常量真正成为端口的最终权威而非仅测试用的镜像；`lib.rs` 的导航守卫改为引用 `constants::DEV_SERVER_PORT` / `DEV_HMR_PORT`，不再写 `localhost:1420` 字面值
+- **新增 `scripts/check-config-sync.mjs`**（接入 `pnpm check` 与 `pnpm build`）：断言 `INLINE_PLAYABLE_EXTENSIONS` ⊂ `VIDEO_TYPES`（前端列出一个后端根本不扫描的扩展名毫无意义）、两份清单无重复且均为小写
+- 给 `INLINE_PLAYABLE_EXTENSIONS` / `VIDEO_TYPES` / 4 位数字密码 / 登录频率限制补上"这是启发式而非保证"与取舍说明的注释，并新增测试把"有意排除的格式"和"有意保留为仅系统播放的格式"分别锁死
+
+
 - 其中 `real_build_output_is_served_end_to_end` 用真实 SvelteKit 产物验证，标记 `#[ignore]` 并由 CI 在 `pnpm build` 之后以 `cargo test -- --ignored` 显式运行（而非静默跳过）
 - 新增日志轮转测试（启动时与运行时两条路径）
+- 新增"登录页模板不含硬编码颜色"测试（拦下 `#rgb` / `rgb()` / `rgba()`），并断言模板用到的每个令牌都真实存在于注入的 `theme.css`
+- `video_endpoint_serves_videos_and_rejects_other_files` 增加大写扩展名用例（`UPPER.MP4` 必须得到 `video/mp4`）
 - 移除扫描结果的磁盘缓存（`video_cache.json`）：判定缓存有效性必须先完整遍历目录读元数据，命中时省下的只有排序与写盘，收益不抵一处额外磁盘 IO 与缓存损坏静默失效的风险；同时去掉 `use_cache` 参数、`ScannedFile` 中间结构与相关测试
 - 补充扫描过滤测试（扩展名、最小体积、子目录变更）与根目录拒绝测试
 
@@ -37,6 +49,8 @@
 
 - `tauri.conf.json` 的 `bundle.targets` 由 `["app"]` 改为 `["nsis"]`，`pnpm tauri build` 现在在 Windows 上真正产出安装包（`app` 是 macOS 专用包类型，此前等于不打包，与 README 的描述不符）。选择 `nsis` 而非框架默认目标集，是因为默认会先尝试 MSI（WiX）并在本机 `light.exe` 阶段失败、中断整个打包，而 `nsis` 已实测产出可用安装包；macOS / Linux 打包请用 `--bundles` 覆盖
 - 修正文档与实现不符之处：README 的缓存/轮转/安装包描述、`docs/api.md` 补齐静态资源路由、Host 校验、`/login` 语义、`/auth` 各错误码、`/video/*` 扩展名规则、端口自增说明
+- 修正 `docs/api.md` 的 Host 校验说明：原先写"除 `POST /auth` 之外的所有端点都先校验 Host"，实际 `handle_request` 在分发 `/auth` 之前就已校验，文档与实现相反
+- 登录页硬编码颜色全部令牌化：`theme.css` 补齐 `--warning-soft` / `--warning-border` / `--scrim` / `--scrim-strong` / `--shadow-card`，模板改为全量取令牌（原文件仍散落 `#ef4444`、`#34d399`、`rgba(...)` 等字面量，与本轮"令牌单一来源"的目标不符）
 - `AGENTS.md` 的 clippy 命令统一为 `--all-targets`（与 CI 一致），并补充单一前端架构、`FrontendAssets` 类型擦除约束、开发模式下网页端需先 `pnpm build` 等要点
 
 ## v0.3.4

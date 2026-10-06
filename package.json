@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node scripts/check-web-build.mjs",
+    "build": "vite build && node scripts/check-web-build.mjs && node scripts/check-config-sync.mjs",
     "build:web": "vite build",
     "check:web-build": "node scripts/check-web-build.mjs",
+    "check:config-sync": "node scripts/check-config-sync.mjs",
     "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-config-sync.mjs",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
     "tauri:build": "tauri build"

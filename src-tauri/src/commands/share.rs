@@ -9,7 +9,9 @@ use std::thread::JoinHandle;
 
 use tauri::State;
 
-use crate::constants::{MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS};
+use crate::constants::{
+    DEFAULT_SHARE_PORT, MAX_PORT_ATTEMPTS, SERVER_START_TIMEOUT_SECS, SERVER_STOP_TIMEOUT_SECS,
+};
 use crate::error::AppError;
 use crate::models::{ShareServerInfo, ShareStatus};
 use crate::server::{self, StopSignal};
@@ -28,6 +30,11 @@ pub async fn start_share_server(
     app: tauri::AppHandle,
 ) -> Result<ShareServerInfo, AppError> {
     let app_state = state.inner().clone();
+
+    // 调用方传 0 表示"用默认端口"：让后端成为端口的最终权威，
+    // 而不是让前端硬编码一个数字（`src/lib/config.ts` 只是同一值的镜像，
+    // 由 `csp_tests::share_port_matches_frontend_config` 保证两者一致）
+    let port = if port == 0 { DEFAULT_SHARE_PORT } else { port };
 
     app_state.start_server_starting()?;
 
@@ -58,6 +65,10 @@ pub async fn start_share_server(
         app_state.set_server_stopped();
         log::error!("[共享] 扫描失败: {}", e);
         return Err(e);
+    }
+
+    if let Ok(report) = &scan_result {
+        app_state.set_last_scan_report(report.clone());
     }
 
     log::info!("[共享] 视频扫描完成，正在启动HTTP服务器...");

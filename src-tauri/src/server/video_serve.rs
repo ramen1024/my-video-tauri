@@ -145,12 +145,9 @@ pub fn handle_video_request(
         return super::response::text_response(500, "Seek error");
     }
 
-    let content_type = video_content_type(
-        video_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or(""),
-    );
+    // 复用上方已小写化的扩展名：直接用原始扩展名会让 `Movie.MP4` 这类文件名通过
+    // 白名单却拿到 `application/octet-stream`，浏览器可能因此拒绝内联播放
+    let content_type = video_content_type(extension.as_deref().unwrap_or(""));
 
     let limited_reader = file.take(content_length);
     let boxed_reader: Box<dyn Read + Send> = Box::new(limited_reader);

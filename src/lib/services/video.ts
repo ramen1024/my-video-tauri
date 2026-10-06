@@ -6,10 +6,15 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import type { VideoFile } from "$lib/types";
+import type { ScanReport, VideoFile } from "$lib/types";
 
-/** 扫描指定文件夹中的视频文件 */
-export async function scanVideos(folderPath: string): Promise<VideoFile[]> {
+/**
+ * 扫描指定文件夹中的视频文件
+ *
+ * 返回本次扫描报告（被跳过的过小文件等）；视频列表由扫描结果写入后端状态，
+ * 调用方随后用 `getSharedVideos` 取回，避免 IPC 一次回传两份完整列表。
+ */
+export async function scanVideos(folderPath: string): Promise<ScanReport> {
   return await invoke("scan_videos", { folderPath });
 }
 

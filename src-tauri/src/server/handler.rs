@@ -237,8 +237,25 @@ pub fn handle_request(
                 // panic = "abort"，catch_unwind 在此场景下本就无法生效，故不做包装
                 let msg =
                     match crate::commands::video::scan_videos_sync(folder_path, &scan_app_state) {
-                        Ok(_) => serde_json::json!({"success": true, "message": "视频列表已刷新"})
-                            .to_string(),
+                        Ok(report) => {
+                            scan_app_state.set_last_scan_report(report.clone());
+                            // 提示语里带上"被跳过的文件"，让网页端用户也能知道
+                            // 列表为什么比目录里的文件少
+                            let mut json = serde_json::json!({
+                                "success": true,
+                                "message": "视频列表已刷新",
+                                "total": report.total,
+                            });
+                            if report.has_skipped() {
+                                json["skipped_small_count"] =
+                                    serde_json::json!(report.skipped_small_count);
+                                json["message"] = serde_json::json!(format!(
+                                    "视频列表已刷新；{} 个文件因小于最小体积被跳过",
+                                    report.skipped_small_count
+                                ));
+                            }
+                            json.to_string()
+                        }
                         Err(e) => serde_json::json!({"success": false, "message": e.to_string()})
                             .to_string(),
                     };
@@ -335,6 +352,55 @@ mod tests {
         assert!(
             html.contains("--radius-lg:"),
             "登录页应包含 theme.css 的圆角令牌"
+        );
+        // 模板里用到的每个令牌都必须在注入的 theme.css 中真实存在，
+        // 否则属性会静默失效（例如遮罩变透明）
+        for token in [
+            "--scrim:",
+            "--scrim-strong:",
+            "--shadow-card:",
+            "--warning-soft:",
+            "--warning-border:",
+            "--success-light:",
+            "--success-border:",
+            "--surface-hover:",
+            "--border-strong:",
+            "--accent-soft:",
+            "--accent-border:",
+            "--accent-soft-hover:",
+            "--danger-soft:",
+            "--danger-border:",
+            "--danger-strong:",
+        ] {
+            assert!(
+                html.contains(token),
+                "登录页注入的 theme.css 缺少模板使用的 {} 令牌",
+                token
+            );
+        }
+    }
+
+    /// 检测 CSS 颜色字面量（`#rgb` / `#rrggbb` 与 `rgb(` / `rgba(`）
+    fn contains_color_literal(source: &str) -> bool {
+        if source.contains("rgb(") || source.contains("rgba(") {
+            return true;
+        }
+        let bytes = source.as_bytes();
+        bytes.iter().enumerate().any(|(i, b)| {
+            *b == b'#'
+                && bytes
+                    .get(i + 1)
+                    .is_some_and(|next| next.is_ascii_hexdigit())
+        })
+    }
+
+    #[test]
+    fn test_login_template_has_no_hardcoded_colors() {
+        // 登录页的颜色必须全部来自注入的 theme.css：模板里一旦出现颜色字面量，
+        // 改主题时就会漏掉这一处（AGENTS.md「禁止硬编码颜色」）
+        assert!(
+            !contains_color_literal(LOGIN_PAGE_TEMPLATE),
+            "登录页模板不应硬编码颜色，请改用 theme.css 的令牌"
         );
     }
 }

@@ -14,7 +14,11 @@
     /** 视频资源 URL，由平台适配层给出 */
     videoSrc: string;
     onClose: () => void;
-    /** 播放失败时上报，由页面统一展示 */
+    /**
+     * 播放失败时上报（容器/编码不支持等）
+     *
+     * 由页面统一处理：展示原因，并在有系统播放器时自动回退（见 `+page.svelte`）。
+     */
     onError?: (message: string) => void;
   }
 
@@ -30,7 +34,7 @@
   function handleVideoError() {
     // 关闭播放器时会清空 src，同样会触发 error；只有仍在播放时才视为真正的播放失败
     if (videoElement?.src) {
-      onError?.(`该文件的编码格式无法播放: ${video.name}`);
+      onError?.(`该文件无法在内置播放器中播放: ${video.name}`);
     }
   }
 

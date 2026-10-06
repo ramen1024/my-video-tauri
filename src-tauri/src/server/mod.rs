@@ -18,6 +18,8 @@ mod video_serve;
 
 #[cfg(test)]
 mod api_tests;
+#[cfg(test)]
+mod csp_tests;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;

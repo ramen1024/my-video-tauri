@@ -29,6 +29,32 @@ export interface ShareServerInfo {
   port: number;
 }
 
+/** 一次扫描中被跳过的文件，对应 Rust SkippedFile */
+export interface SkippedFile {
+  /** 文件名（不含路径） */
+  name: string;
+  /** 文件大小（字节） */
+  size: number;
+}
+
+/** 扫描结果摘要，对应 Rust ScanReport */
+export interface ScanReport {
+  /** 成功纳入列表的视频数量 */
+  total: number;
+  /** 因小于最小体积而跳过的文件（最多列出前 N 个） */
+  skipped_small: SkippedFile[];
+  /** 因小于最小体积而跳过的文件总数（可能大于 skipped_small.length） */
+  skipped_small_count: number;
+  /** skipped_small 是否只列出了部分条目 */
+  skipped_small_truncated: boolean;
+}
+
+/** 扫描结果：视频列表 + 本次扫描报告 */
+export interface ScanResult {
+  videos: VideoFile[];
+  report: ScanReport;
+}
+
 /** 共享服务器状态，对应 Rust ShareStatus（webview 重载后恢复界面用） */
 export interface ShareStatus {
   /** 服务器是否正在运行 */

@@ -9,9 +9,9 @@ tiny_http 服务器处理，默认监听由应用界面显示的本地 IP 与端
 
 ## Host 校验
 
-除 `POST /auth` 之外的所有端点都先校验 `Host` 头：仅接受本机 IP（应用启动时探测到的
-网卡地址）、`127.0.0.1`、`localhost`、`::1`（可带端口，IPv6 字面量写作 `[::1]:6008`）。
-其他 Host 返回 `403 Invalid Host header`。
+**所有端点（包括 `POST /auth`）** 在路由分发前都先校验 `Host` 头：仅接受本机 IP（应用
+启动时探测到的网卡地址）、`127.0.0.1`、`localhost`、`::1`（可带端口，IPv6 字面量写作
+`[::1]:6008`）。其他 Host 返回 `403 Invalid Host header`。
 
 这道校验用于阻断 DNS rebinding：恶意网页可以把域名解析到本机，但无法让浏览器把 Host
 伪装成本机 IP。
@@ -155,9 +155,23 @@ Session Cookie 属性：`HttpOnly; SameSite=Strict; Path=/`，有效期与服务
 ```json
 {
   "success": true,
-  "message": "视频列表已刷新"
+  "message": "视频列表已刷新",
+  "total": 18
 }
 ```
+
+**当扫描跳过了过小的文件时，响应会额外带上计数并在 `message` 中说明：**
+
+```json
+{
+  "success": true,
+  "message": "视频列表已刷新；2 个文件因小于最小体积被跳过",
+  "total": 18,
+  "skipped_small_count": 2
+}
+```
+
+`skipped_small_count` 表示因小于 `MIN_VIDEO_FILE_SIZE_BYTES`（1 MiB）而被丢弃的文件数。服务端为节省带宽只下发**数量**、不逐文件下发明细（桌面端 IPC 会给出明细列表）；客户端据此提示用户"列表为什么比目录里的文件少"，不要静默忽略。
 
 **响应示例（无刷新记录，HTTP 200）：**
 

@@ -51,6 +51,45 @@ pub fn generate_nonce() -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// 构造浏览器侧 CSP 字符串
+///
+/// 指令**集合**是本函数固定的（浏览器侧需要哪些指令不随桌面端变化），取值来源分三类：
+/// - `default-src` / `style-src`：与 `tauri.conf.json` 逐字一致，取自
+///   [`crate::constants::CSP_SHARED_DIRECTIVES`]（有测试比对）；
+/// - `script-src`：在 `'self'` 后追加本次请求的随机 nonce；
+/// - `connect-src` / `object-src` / `base-uri` / `frame-ancestors`：桌面端靠
+///   `default-src 'self'` 兜底，浏览器端显式写出，取值不松于 `'self'`
+///   （见 [`crate::constants::WEB_CSP_HARDENED_DIRECTIVES`]）；
+/// - `img-src` / `media-src`：浏览器侧独有，不含桌面端专用的 `asset:` 协议。
+///
+/// 指令顺序与 `tauri.conf.json` 保持一致，便于人工比对：
+/// default-src → script-src → style-src → img-src → media-src → connect-src
+/// → object-src → base-uri → frame-ancestors。
+pub fn frontend_csp(nonce: &str) -> String {
+    use crate::constants::{CSP_SHARED_DIRECTIVES, WEB_CSP_IMG_SRC, WEB_CSP_MEDIA_SRC};
+
+    /// 取共享指令的取值；缺失时直接 panic——共享常量与 tauri.conf.json 的一致性
+    /// 由 `csp_tests` 保证，这里若取不到说明代码被改坏了，宁可构建期就炸
+    /// 也不要静默降级成一条缺失指令的 CSP（那会表现为整站资源被拦）
+    fn shared(directive: &str) -> &'static str {
+        CSP_SHARED_DIRECTIVES
+            .iter()
+            .find(|(name, _)| *name == directive)
+            .map(|(_, value)| *value)
+            .unwrap_or_else(|| panic!("CSP_SHARED_DIRECTIVES 缺少 {directive}"))
+    }
+
+    format!(
+        "default-src {}; script-src 'self' 'nonce-{}'; style-src {}; {}; {}; \
+         connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+        shared("default-src"),
+        nonce,
+        shared("style-src"),
+        WEB_CSP_IMG_SRC,
+        WEB_CSP_MEDIA_SRC,
+    )
+}
+
 /// 构造前端页面（SPA 首页 / 登录页）响应
 ///
 /// 为内联 `<script>` 注入 CSP nonce，使页面无需放行 `script-src 'unsafe-inline'`
@@ -65,12 +104,7 @@ pub fn frontend_html_response(
 ) -> tiny_http::Response<Box<dyn Read + Send>> {
     let html = html.replace("<script>", &format!("<script nonce=\"{}\">", nonce));
     let mut resp = build_response(200, "text/html; charset=utf-8", html.into_bytes());
-    let csp = format!(
-        "default-src 'self'; script-src 'self' 'nonce-{}'; style-src 'self' 'unsafe-inline'; \
-         img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; \
-         base-uri 'none'; frame-ancestors 'none'",
-        nonce
-    );
+    let csp = frontend_csp(nonce);
     resp.add_header(
         tiny_http::Header::from_bytes(&b"Content-Security-Policy"[..], csp.as_bytes()).unwrap(),
     );

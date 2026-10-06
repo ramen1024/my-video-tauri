@@ -8,6 +8,13 @@
  * 组件只依赖 [`Platform`] 接口与 `platform.kind`，不再关心自己跑在哪一侧。
  */
 
+import type {
+  PasswordStatus,
+  ScanReport,
+  ShareServerInfo,
+  ShareStatus,
+} from "$lib/types";
+
 /** 应用内统一的视频条目 */
 export interface VideoItem {
   /** 文件名（不含路径） */
@@ -35,9 +42,12 @@ export type PlatformKind = "desktop" | "web";
 /**
  * 当前运行环境提供的后端能力
  *
- * 所有方法都必须是"当前环境能实现"的：网页端不支持的能力用
- * `canPickFolder` / `canShare` 之类的只读标志显式声明，由 UI 决定是否渲染，
- * 而不是抛错后再补救。
+ * 环境差异一律用能力标志显式声明（`canPickFolder` / `canShare` / `canCancelScan` /
+ * `canOpenWithSystemPlayer` / `listPollIntervalMs`），由 UI 决定是否渲染入口，
+ * 而不是先调用再抛错补救。
+ *
+ * 仅桌面端存在的一组能力（共享控制与密码，见文件末尾）在网页端实现为抛错桩：
+ * 调用方必须先看 `canShare`，因此这些桩不会被触及。
  */
 export interface Platform {
   /** 运行环境 */
@@ -46,6 +56,19 @@ export interface Platform {
   readonly canPickFolder: boolean;
   /** 是否支持局域网共享控制（启动/停止/状态/密码） */
   readonly canShare: boolean;
+  /**
+   * 是否支持取消正在进行的扫描
+   *
+   * 桌面端扫描在本机进行，可以中断；网页端的扫描跑在服务端后台线程里，
+   * 没有取消接口。UI 据此隐藏"取消扫描"按钮，否则会留下一个点了没反应的死按钮。
+   */
+  readonly canCancelScan: boolean;
+  /**
+   * 是否有"系统默认播放器"可作为内置播放失败时的回退
+   *
+   * 仅桌面端为 `true`。网页端没有这个概念，内置播放失败时只能提示用户。
+   */
+  readonly canOpenWithSystemPlayer: boolean;
   /**
    * 列表自动刷新间隔（毫秒），`null` 表示不轮询
    *
@@ -57,8 +80,14 @@ export interface Platform {
   /** 选择本机文件夹；不支持或用户取消时返回 `null` */
   pickFolder(): Promise<string | null>;
 
-  /** 重新扫描共享目录并返回最新列表 */
-  rescan(folder: string): Promise<VideoItem[]>;
+  /**
+   * 重新扫描共享目录
+   *
+   * 返回最新列表与本次扫描报告。报告用于解释"目录里明明有 N 个文件、列表里只有
+   * M 个"——例如过小的文件会被跳过，此前这类丢弃完全是静默的。
+   * 网页端拿不到逐文件明细时，至少给出被跳过的**数量**。
+   */
+  rescan(folder: string): Promise<{ videos: VideoItem[]; report: ScanReport }>;
 
   /**
    * 读取当前视频列表（不触发扫描）
@@ -71,12 +100,48 @@ export interface Platform {
   /** 取消正在进行的扫描（网页端为无操作） */
   cancelScan(): Promise<void>;
 
-  /** 该视频能否在应用内播放器里直接播放 */
-  canPlayInline(video: VideoItem): boolean;
+  /**
+   * 是否应**优先**用内置播放器打开
+   *
+   * 这是"值得一试"而非保证：内核的真实解码能力取决于容器/编码与平台
+   * （Windows 的 WebView2 是 Chromium 系、支持 Matroska；macOS 的 WKWebView 不支持），
+   * 无法用静态清单或 `canPlayType` 准确预判。
+   *
+   * 因此调用方**必须**在播放失败（`<video>` 的 error 事件）时回退：
+   * 有系统播放器就交给它（`canOpenWithSystemPlayer`），否则提示用户。
+   */
+  preferInlinePlayback(video: VideoItem): boolean;
 
   /** 视频资源 URL（桌面端 asset 协议 / 网页端 HTTP 端点） */
   videoSrc(video: VideoItem): string;
 
-  /** 用系统默认播放器打开（桌面端专用） */
+  /**
+   * 用系统默认播放器打开（桌面端专用）
+   *
+   * 既用于明确不支持内置播放的容器，也作为内置播放失败时的回退路径，
+   * 因此网页端实现为抛错桩、调用方须先看 `canOpenWithSystemPlayer`。
+   */
   openWithSystemPlayer(video: VideoItem): Promise<void>;
+
+  // ---------------- 局域网共享与密码（仅桌面端，由 canShare 守卫） ----------------
+
+  /**
+   * 启动局域网共享服务器
+   *
+   * 网页端本身是被共享的一方，`canShare` 恒为 `false`，调用会抛错。
+   */
+  startShare(folder: string, port: number): Promise<ShareServerInfo>;
+
+  /** 停止局域网共享服务器 */
+  stopShare(): Promise<void>;
+
+  /**
+   * 查询后端共享状态
+   *
+   * 用于 webview 重载后恢复界面：后端服务器可能仍在运行，而前端状态已丢失。
+   */
+  getShareStatus(): Promise<ShareStatus>;
+
+  /** 查询密码保护状态 */
+  getPasswordStatus(): Promise<PasswordStatus>;
 }

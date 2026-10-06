@@ -15,11 +15,11 @@
   interface Props {
     videos: VideoItem[];
     onPlay: (video: VideoItem) => void;
-    /** 该条目能否在应用内播放（否则按钮语义为"用系统播放器打开"） */
-    canPlayInline: (video: VideoItem) => boolean;
+    /** 该条目是否应优先用内置播放器（否则按钮语义为"用系统播放器打开"） */
+    preferInlinePlayback: (video: VideoItem) => boolean;
   }
 
-  let { videos, onPlay, canPlayInline }: Props = $props();
+  let { videos, onPlay, preferInlinePlayback }: Props = $props();
 
   let sortField = $state<SortField>("name");
   let sortDirection = $state<SortDirection>("asc");
@@ -157,7 +157,7 @@
             <div class="col-size">{formatFileSize(video.size)}</div>
             <div class="col-date">{video.modified || "-"}</div>
             <div class="col-action">
-              {#if canPlayInline(video)}
+              {#if preferInlinePlayback(video)}
                 <button class="play-btn" onclick={(e) => { e.stopPropagation(); onPlay(video); }} onkeydown={(e) => e.stopPropagation()} aria-label="播放">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                 </button>

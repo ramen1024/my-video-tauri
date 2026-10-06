@@ -8,6 +8,7 @@
  * 接口契约见 `docs/api.md`。
  */
 
+import type { ScanReport } from "$lib/types";
 import type { Platform, VideoItem } from "./types";
 
 /** 与 Rust `VideoSummary` 对应：网页端接口刻意不返回本机绝对路径 */
@@ -23,6 +24,10 @@ interface RefreshStatus {
   success?: boolean;
   pending?: boolean;
   message?: string;
+  /** 本次刷新纳入列表的视频数量（`/refresh-status` 的 `total`） */
+  total?: number;
+  /** 因小于最小体积被跳过的文件数量 */
+  skipped_small_count?: number;
 }
 
 const VIDEO_LIST_PATH = "/videos";
@@ -34,6 +39,10 @@ const REFRESH_TIMEOUT_MS = 120_000;
 const REFRESH_POLL_INTERVAL_MS = 800;
 /** 会话有效时长的保守估计无关紧要：服务端才是权威，这里只做请求超时保护 */
 const REQUEST_HINT = "无法连接到服务器，请检查网络";
+
+/** 桌面端专属能力的统一提示（网页端 UI 不会提供入口，这里仅作防御） */
+const SHARE_UNSUPPORTED = "网页端不支持局域网共享控制（本身即被共享方）";
+const PASSWORD_UNSUPPORTED = "网页端不支持密码保护设置（请在被共享的设备上操作）";
 
 /** 上一次成功拉取的列表与指纹，用于"列表未变化时返回同一引用" */
 let cachedList: VideoItem[] = [];
@@ -141,7 +150,7 @@ async function loadVideosFromServer(): Promise<VideoItem[]> {
 }
 
 /** 触发重新扫描并等待结果 */
-async function rescanOnServer(): Promise<VideoItem[]> {
+async function rescanOnServer(): Promise<{ videos: VideoItem[]; report: ScanReport }> {
   const { data } = await requestJson(REFRESH_PATH);
   if (!data.success) {
     throw new Error(typeof data.message === "string" ? data.message : "刷新失败");
@@ -159,7 +168,20 @@ async function rescanOnServer(): Promise<VideoItem[]> {
       }
       // 列表已变，丢弃指纹缓存，强制重新拉取
       cachedEtag = null;
-      return await loadVideosFromServer();
+      const videos = await loadVideosFromServer();
+      // 服务端只回传被跳过文件的**数量**，不逐文件下发；
+      // 这里组装出同形状的报告，让桌面端/网页端复用同一套提示逻辑
+      const skippedCount =
+        typeof result.skipped_small_count === "number" ? result.skipped_small_count : 0;
+      return {
+        videos,
+        report: {
+          total: typeof result.total === "number" ? result.total : videos.length,
+          skipped_small: [],
+          skipped_small_count: skippedCount,
+          skipped_small_truncated: false,
+        },
+      };
     }
     await sleep(REFRESH_POLL_INTERVAL_MS);
   }
@@ -171,6 +193,8 @@ export const web: Platform = {
   kind: "web",
   canPickFolder: false,
   canShare: false,
+  canCancelScan: false,
+  canOpenWithSystemPlayer: false,
   listPollIntervalMs: 30_000,
 
   async pickFolder() {
@@ -190,8 +214,9 @@ export const web: Platform = {
     // 网页端无法中断服务端的扫描任务，等待其自然结束
   },
 
-  canPlayInline() {
-    // 一律交给浏览器内置播放器尝试；不支持的编码由播放器 error 事件给出提示
+  preferInlinePlayback() {
+    // 交由浏览器/设备自身尝试：各端解码能力差异极大，且服务端无从预判，
+    // 不支持的编码由播放器 error 事件给出提示（网页端没有系统播放器可回退）
     return true;
   },
 
@@ -201,7 +226,26 @@ export const web: Platform = {
   },
 
   async openWithSystemPlayer() {
-    // 网页端没有"系统播放器"概念；canPlayInline 恒为 true，此分支不会被触及
+    // 网页端没有"系统播放器"概念；preferInlinePlayback 恒为 true，此分支不会被触及
     throw new Error("网页端不支持调用系统播放器");
+  },
+
+  // ---------------- 桌面端专属能力：抛错桩 ----------------
+  // 网页端是被共享的一方，canShare 恒为 false，UI 不会渲染这些入口。
+
+  async startShare() {
+    throw new Error(SHARE_UNSUPPORTED);
+  },
+
+  async stopShare() {
+    throw new Error(SHARE_UNSUPPORTED);
+  },
+
+  async getShareStatus() {
+    throw new Error(SHARE_UNSUPPORTED);
+  },
+
+  async getPasswordStatus() {
+    throw new Error(PASSWORD_UNSUPPORTED);
   },
 };

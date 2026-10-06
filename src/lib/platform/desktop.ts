@@ -13,7 +13,13 @@ import {
   playVideo as playVideoIpc,
   scanVideos,
 } from "$lib/services/video";
-import { isSupportedFormat } from "$lib/utils/format";
+import {
+  getShareStatus as getShareStatusIpc,
+  startShareServer,
+  stopShareServer,
+} from "$lib/services/share";
+import { getPasswordStatus as getPasswordStatusIpc } from "$lib/services/password";
+import { isInlinePlayableContainer } from "$lib/utils/format";
 import type { VideoFile } from "$lib/types";
 import type { Platform, VideoItem } from "./types";
 
@@ -33,6 +39,8 @@ export const desktop: Platform = {
   kind: "desktop",
   canPickFolder: true,
   canShare: true,
+  canCancelScan: true,
+  canOpenWithSystemPlayer: true,
   listPollIntervalMs: null,
 
   async pickFolder() {
@@ -45,8 +53,10 @@ export const desktop: Platform = {
   },
 
   async rescan(folder) {
-    const videos = await scanVideos(folder);
-    return videos.map(toVideoItem);
+    const report = await scanVideos(folder);
+    // 扫描结果已写入后端状态，再取一次保证与后端一致（含排序生效后的顺序）
+    const videos = await getSharedVideos();
+    return { videos: videos.map(toVideoItem), report };
   },
 
   async loadVideos() {
@@ -58,9 +68,10 @@ export const desktop: Platform = {
     await cancelScanIpc();
   },
 
-  canPlayInline(video) {
-    // webview 只原生支持 mp4/webm/m4v，其余格式交给系统播放器
-    return isSupportedFormat(video.extension);
+  preferInlinePlayback(video) {
+    // 清单只覆盖"实测可解码"的容器，其余（avi/wmv/flv/mpg/mpeg）直接走系统播放器；
+    // 清单内的若实际放不出来（如 HEVC 视频轨、AC3 音轨），由页面回退到系统播放器
+    return isInlinePlayableContainer(video.extension);
   },
 
   videoSrc(video) {
@@ -69,5 +80,21 @@ export const desktop: Platform = {
 
   async openWithSystemPlayer(video) {
     await playVideoIpc(video.path ?? "");
+  },
+
+  async startShare(folder, port) {
+    return await startShareServer(folder, port);
+  },
+
+  async stopShare() {
+    await stopShareServer();
+  },
+
+  async getShareStatus() {
+    return await getShareStatusIpc();
+  },
+
+  async getPasswordStatus() {
+    return await getPasswordStatusIpc();
   },
 };

@@ -6,11 +6,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { platform, type VideoItem } from "$lib/platform";
-  import type { ShareServerInfo, PasswordStatus } from "$lib/types";
+  import type { PasswordStatus, ScanReport, ShareServerInfo } from "$lib/types";
   import { parseAppError } from "$lib/types";
-  import { startShareServer, stopShareServer, getShareStatus } from "$lib/services/share";
-  import { getPasswordStatus } from "$lib/services/password";
-  import { DEFAULT_SHARE_PORT } from "$lib/config";
+  import { DEFAULT_SHARE_PORT, MIN_VIDEO_FILE_SIZE_BYTES } from "$lib/config";
+  import { formatFileSize } from "$lib/utils/format";
   import Header from "$lib/components/Header.svelte";
   import ErrorMessage from "$lib/components/ErrorMessage.svelte";
   import VideoPlayer from "$lib/components/VideoPlayer.svelte";
@@ -26,6 +25,13 @@
   let currentFolder = $state("");
   let isScanning = $state(false);
   let errorMsg = $state("");
+  /**
+   * 非错误类的提示（例如"有文件因过小被跳过"）
+   *
+   * 与 `errorMsg` 分开：这类提示不是故障，用错误色显示会让用户以为程序坏了；
+   * 它只是解释列表为什么比目录里的文件少。
+   */
+  let noticeMsg = $state("");
   let currentVideo = $state<VideoItem | null>(null);
   let isSharing = $state(false);
   let shareInfo = $state<ShareServerInfo | null>(null);
@@ -53,8 +59,11 @@
     if (platform.canPickFolder && !currentFolder) return;
     isScanning = true;
     errorMsg = "";
+    noticeMsg = "";
     try {
-      videos = await platform.rescan(currentFolder);
+      const { videos: next, report } = await platform.rescan(currentFolder);
+      videos = next;
+      noticeMsg = describeSkipped(report);
     } catch (e) {
       const msg = parseAppError(e);
       errorMsg = msg.includes("扫描已取消") ? "扫描已取消" : "扫描失败: " + msg;
@@ -69,17 +78,68 @@
     });
   }
 
-  async function playVideo(video: VideoItem) {
-    if (platform.canPlayInline(video)) {
-      errorMsg = "";
-      currentVideo = video;
-      return;
-    }
+  /**
+   * 生成"有多少文件被跳过、为什么"的提示文案
+   *
+   * 扫描会丢弃小于 `MIN_VIDEO_FILE_SIZE_BYTES` 的文件（空壳文件、下载残留等）。
+   * 此前这类丢弃完全静默，用户只能自己数目录里有多少文件、再对比列表，
+   * 因此这里必须把数量和具体文件名都摆出来。
+   *
+   * 网页端只拿得到数量（服务端为省带宽不下发逐文件明细），此时省略文件名部分，
+   * 避免出现"小于 1 MB）："这样以冒号结尾却什么都没列的文案。
+   */
+  function describeSkipped(report: ScanReport): string {
+    if (report.skipped_small_count === 0) return "";
+    const head = `已跳过 ${report.skipped_small_count} 个过小的文件（小于 ${formatFileSize(MIN_VIDEO_FILE_SIZE_BYTES)}）`;
+    if (report.skipped_small.length === 0) return head;
+
+    const names = report.skipped_small
+      .map((f) => `${f.name}（${formatFileSize(f.size)}）`)
+      .join("、");
+    const more = report.skipped_small_truncated
+      ? `，另有 ${report.skipped_small_count - report.skipped_small.length} 个未列出`
+      : "";
+    return `${head}：${names}${more}`;
+  }
+
+  /** 交给系统默认播放器（网页端无此能力，由 canOpenWithSystemPlayer 守卫） */
+  async function openWithSystemPlayer(video: VideoItem) {
     try {
       await platform.openWithSystemPlayer(video);
     } catch (e) {
       errorMsg = "无法播放该视频文件: " + parseAppError(e);
     }
+  }
+
+  async function playVideo(video: VideoItem) {
+    if (platform.preferInlinePlayback(video)) {
+      errorMsg = "";
+      currentVideo = video;
+      return;
+    }
+    await openWithSystemPlayer(video);
+  }
+
+  /**
+   * 内置播放失败（容器/编码/音轨不支持）后的兜底
+   *
+   * webview 的真实解码能力随平台与文件内的编码而变，静态清单只能给出"值得一试"
+   * （mkv 在 Chromium 系 webview 能播、在 WebKit 系不能；同样是 mkv，HEVC 视频轨或
+   * AC3 音轨也会放不出来），因此失败时必须回退，否则用户看到的是"播放器一闪就没了"。
+   */
+  function handlePlaybackFailure(message: string) {
+    const failed = currentVideo;
+    currentVideo = null;
+    if (!failed) {
+      errorMsg = message;
+      return;
+    }
+    if (platform.canOpenWithSystemPlayer) {
+      errorMsg = `${message} —— 已改用系统播放器打开`;
+      void openWithSystemPlayer(failed);
+      return;
+    }
+    errorMsg = message;
   }
 
   async function startShare() {
@@ -90,7 +150,7 @@
     isStartingShare = true;
     errorMsg = "";
     try {
-      const result = await startShareServer(currentFolder, DEFAULT_SHARE_PORT);
+      const result = await platform.startShare(currentFolder, DEFAULT_SHARE_PORT);
       shareInfo = result;
       isSharing = true;
     } catch (e) {
@@ -103,7 +163,7 @@
   async function stopShare() {
     isStoppingShare = true;
     try {
-      await stopShareServer();
+      await platform.stopShare();
       isSharing = false;
       shareInfo = null;
     } catch (e) {
@@ -133,7 +193,7 @@
    */
   async function restoreBackendState() {
     try {
-      const status = await getShareStatus();
+      const status = await platform.getShareStatus();
       if (status.folder_path) {
         currentFolder = status.folder_path;
         videos = await platform.loadVideos();
@@ -151,7 +211,7 @@
     if (isDesktop) {
       await restoreBackendState();
       try {
-        passwordStatus = await getPasswordStatus();
+        passwordStatus = await platform.getPasswordStatus();
       } catch (e) {
         console.error("获取密码状态失败:", e);
       }
@@ -191,7 +251,7 @@
       video={currentVideo}
       videoSrc={platform.videoSrc(currentVideo)}
       onClose={() => { currentVideo = null; }}
-      onError={(msg) => { errorMsg = msg; }}
+      onError={handlePlaybackFailure}
     />
   {/if}
 
@@ -227,12 +287,24 @@
 
   <ErrorMessage message={errorMsg} onDismiss={() => { errorMsg = ""; }} />
 
+  {#if noticeMsg}
+    <div class="notice-message" role="status">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+      <span>{noticeMsg}</span>
+      <button class="dismiss-btn" onclick={() => { noticeMsg = ""; }} aria-label="关闭提示">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+  {/if}
+
   <div class="content">
     {#if isScanning}
       <div class="loading" role="status" aria-live="polite">
         <div class="spinner"></div>
         <p>正在扫描视频文件...</p>
-        <button class="btn btn-danger" onclick={handleCancelScan}>取消扫描</button>
+        {#if platform.canCancelScan}
+          <button class="btn btn-danger" onclick={handleCancelScan}>取消扫描</button>
+        {/if}
       </div>
     {:else if videos.length === 0}
       <div class="empty-state">
@@ -240,7 +312,7 @@
         <p>{platform.canPickFolder ? "请选择文件夹以扫描视频文件" : "共享文件夹中暂无可播放的视频"}</p>
       </div>
     {:else}
-      <VideoTable {videos} onPlay={playVideo} canPlayInline={(v) => platform.canPlayInline(v)} />
+      <VideoTable {videos} onPlay={playVideo} preferInlinePlayback={(v) => platform.preferInlinePlayback(v)} />
     {/if}
   </div>
 </main>
@@ -262,6 +334,43 @@
     font-size: 12px;
     border-bottom: 1px solid var(--border);
     margin-bottom: 12px;
+  }
+
+  /* 非错误提示：用中性的"提示"配色，避免用户把"跳过了小文件"当成故障 */
+  .notice-message {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .notice-message span {
+    word-break: break-all;
+  }
+
+  .dismiss-btn {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .dismiss-btn:hover {
+    opacity: 1;
   }
 
   .path-label {
